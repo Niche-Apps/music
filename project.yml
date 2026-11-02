@@ -1,0 +1,110 @@
+name: StandardMusic
+options:
+  bundleIdPrefix: com.standardmusic
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    DEVELOPMENT_TEAM: ""
+    ENABLE_HARDENED_RUNTIME: NO
+    DEAD_CODE_STRIPPING: YES
+packages:
+  StandardKit:
+    path: Packages/StandardKit
+  YuEKit:
+    path: Packages/YuEKit
+targets:
+  StandardMusic:
+    type: application
+    platform: macOS
+    sources:
+      - path: StandardMusic
+      - path: docs/custom-engines.md
+        buildPhase: resources
+    dependencies:
+      - package: StandardKit
+        product: StandardKit
+      - target: StandardMusicEngine
+        embed: true
+        codeSign: true
+        copy:
+          destination: executables
+    preBuildScripts:
+      - name: Embed MLX Metal library
+        basedOnDependencyAnalysis: false
+        script: |
+          # The engine helper runs from Contents/MacOS and resolves MLX's metallib via the app bundle.
+          src="$BUILT_PRODUCTS_DIR/mlx-swift_Cmlx.bundle"
+          dst="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
+          if [ -d "$src" ]; then
+            mkdir -p "$dst"; rm -rf "$dst/mlx-swift_Cmlx.bundle"
+            cp -R "$src" "$dst/"
+          fi
+    settings:
+      base:
+        PRODUCT_NAME: Standard Music
+        PRODUCT_BUNDLE_IDENTIFIER: com.standardmusic.app
+        INFOPLIST_FILE: StandardMusic/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        CODE_SIGN_ENTITLEMENTS: StandardMusic/StandardMusic.entitlements
+        SWIFT_STRICT_CONCURRENCY: complete
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+  StandardMusicEngine:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Engine
+    dependencies:
+      - package: YuEKit
+        product: YuEKit
+      - package: StandardKit
+        product: EngineProtocol
+    settings:
+      base:
+        PRODUCT_NAME: StandardMusicEngine
+        PRODUCT_BUNDLE_IDENTIFIER: com.standardmusic.engine
+        SWIFT_OPTIMIZATION_LEVEL: -O
+        GCC_OPTIMIZATION_LEVEL: 3
+  StandardMusicTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: StandardMusicTests
+    dependencies:
+      - target: StandardMusic
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.standardmusic.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Standard Music.app/Contents/MacOS/Standard Music"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        SWIFT_STRICT_CONCURRENCY: complete
+schemes:
+  StandardMusic:
+    build:
+      targets:
+        StandardMusic: all
+        StandardMusicEngine: all
+        StandardMusicTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - StandardMusicTests
+      # Tests run inside the app: point it at a throwaway data directory so they never touch a real library.
+      environmentVariables:
+        SM_HOME: $(PROJECT_DIR)/build/test-home
+      preActions:
+        - script: rm -rf "${PROJECT_DIR}/build/test-home"
+          settingsTarget: StandardMusic
+    archive:
+      config: Release
