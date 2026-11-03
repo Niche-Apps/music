@@ -260,10 +260,10 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
     el.className = 'step-copy'
     el.innerHTML = `<p class="eyebrow"><span class="dot"></span>${String(i + 1).padStart(2, '0')} · ${s.kicker}</p><h3>${s.title}</h3><p>${s.body}</p>
       ${s.chips ? `<div class="chips">${s.chips.map((c) => `<span><i></i>${c}</span>`).join('')}</div>` : ''}
-      ${s.play ? `<button class="play-it" type="button"><b>${PLAY}</b><span>Hear “${esc(studioTrack.track.title)}”</span></button>` : ''}`
+`
+    if (s.play) el.appendChild(clipCard(lib, studioTrack.track, player, 'in-copy'))
     copyHost.appendChild(el)
   })
-  copyHost.querySelectorAll('.play-it').forEach((b) => b.addEventListener('click', () => player.play(studioTrack.track)))
   const copies = [...copyHost.querySelectorAll<HTMLElement>('.step-copy')]
   const progress = $('.tour-progress')
   progress.innerHTML = steps.map(() => '<i><b></b></i>').join('')
@@ -437,7 +437,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
     menu.style.transformOrigin = '100% 0'
   }
 
-  const span = (steps.length * 100 + 240 - 100) / 100
+  const span = (steps.length * 100 + 195 - 100) / 100
   ScrollTrigger.create({
     trigger: '.tour', start: 'top top', end: 'bottom bottom',
     onUpdate: (self) => apply(self.progress * span),
@@ -453,41 +453,43 @@ function nextTitle(lib: Library, cast: Cast) {
 
 // ---------- Listen ----------
 
+/** A song card (cover with play/pause, title, artist, genre, waveform) wired to the shared player. */
+function clipCard(lib: Library, t: Track, player: Player, extraClass = '') {
+  const al = lib.trackAlbum.get(t.id)!
+  const a = lib.artist(al.artistID)
+  const el = document.createElement('div')
+  el.className = `clip ${extraClass}`.trim()
+  el.style.setProperty('--tint', al.palette[1] ?? al.palette[0] ?? '#444')
+  el.innerHTML = `<div class="cov"><img src="${media.cover(al.id)}" alt="" loading="lazy"><div class="pp"><b>${PLAY}</b></div></div>
+    <div class="meta"><b>${esc(t.title)}</b><small>${esc(a.name)} — ${esc(al.title)}</small><span class="genre">${esc(a.genre)}</span><canvas></canvas></div>`
+  const canvas = $<HTMLCanvasElement>('canvas', el)
+  let progress = 0
+  const draw = () => drawWave(canvas, t.peaks ?? [], progress, al.palette[0] ?? '#fd4c6b')
+  new ResizeObserver(draw).observe(canvas)
+  el.addEventListener('click', (e) => {
+    const r = canvas.getBoundingClientRect()
+    const ev = e as MouseEvent
+    if (player.track?.id === t.id && ev.clientY >= r.top && ev.clientY <= r.bottom) { player.seek(clamp((ev.clientX - r.left) / r.width)); return }
+    player.play(t)
+  })
+  player.on(({ track, playing, time, duration }) => {
+    const on = track?.id === t.id
+    el.classList.toggle('on', on && playing)
+    const pp = $('.pp b', el)
+    const want = on && playing ? 'pause' : 'play'
+    if (pp.dataset.state !== want) { pp.dataset.state = want; pp.innerHTML = want === 'pause' ? PAUSE : PLAY }
+    const next = on ? time / duration : 0
+    if (next !== progress) { progress = next; draw() }
+  })
+  return el
+}
+
 function listen(lib: Library, player: Player) {
   const host = $('.clips')
-  const cards = new Map<string, { el: HTMLElement; draw: (p: number) => void; track: Track }>()
   for (const id of lib.featured) {
-    const al = lib.trackAlbum.get(id)!
-    const t = al.tracks.find((x) => x.id === id)!
-    const a = lib.artist(al.artistID)
-    const el = document.createElement('div')
-    el.className = 'clip reveal'
-    el.style.setProperty('--tint', al.palette[1] ?? al.palette[0] ?? '#444')
-    el.innerHTML = `<div class="cov"><img src="${media.cover(al.id)}" alt="" loading="lazy"><div class="pp"><b>${PLAY}</b></div></div>
-      <div class="meta"><b>${esc(t.title)}</b><small>${esc(a.name)} — ${esc(al.title)}</small><span class="genre">${esc(a.genre)}</span><canvas></canvas></div>`
-    host.appendChild(el)
-    const canvas = $<HTMLCanvasElement>('canvas', el)
-    const draw = (p: number) => drawWave(canvas, t.peaks ?? [], p, al.palette[0] ?? '#fd4c6b')
-    cards.set(id, { el, draw, track: t })
-    requestAnimationFrame(() => draw(0))
-    el.addEventListener('click', (e) => {
-      const r = canvas.getBoundingClientRect()
-      const ev = e as MouseEvent
-      if (player.track?.id === id && ev.clientY >= r.top && ev.clientY <= r.bottom) { player.seek(clamp((ev.clientX - r.left) / r.width)); return }
-      player.play(t)
-    })
+    const t = lib.trackAlbum.get(id)!.tracks.find((x) => x.id === id)!
+    host.appendChild(clipCard(lib, t, player, 'reveal'))
   }
-  addEventListener('resize', () => cards.forEach((c) => c.draw(0)))
-  player.on(({ track, playing, time, duration }) => {
-    cards.forEach((c, id) => {
-      const on = track?.id === id
-      c.el.classList.toggle('on', on && playing)
-      const pp = $('.pp b', c.el)
-      const want = on && playing ? 'pause' : 'play'
-      if (pp.dataset.state !== want) { pp.dataset.state = want; pp.innerHTML = want === 'pause' ? PAUSE : PLAY }
-      c.draw(on ? time / duration : 0)
-    })
-  })
   ScrollTrigger.batch('.clip.reveal', {
     start: 'top 92%',
     onEnter: (els) => gsap.to(els, { opacity: 1, y: 0, duration: 1, ease: 'expo.out', stagger: 0.06 }),

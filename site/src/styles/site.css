@@ -52,7 +52,7 @@ code { font-family: var(--mono); font-size: 0.92em; background: rgba(255,255,255
 .fine { font-size: 13px; color: var(--ink-3); margin: 14px 0 0; }
 
 /* ---------- Tour stage ---------- */
-.tour { position: relative; height: calc(var(--tour-steps, 10) * 100vh + 240vh); }
+.tour { position: relative; height: calc(var(--tour-steps, 10) * 100vh + 195vh); }
 .stage { position: sticky; top: 0; height: 100vh; overflow: hidden; }
 .wall { position: absolute; inset: -12% -10% -25% -10%; display: flex; flex-direction: column; gap: 18px; transform: perspective(1400px) rotateX(18deg) rotateZ(-8deg) scale(1.15); transform-origin: 50% 30%; opacity: .5; }
 .wall .lane { display: flex; gap: 18px; width: max-content; animation: lane var(--d, 120s) linear infinite; }
@@ -112,6 +112,10 @@ section.listen, section.open { padding: clamp(80px, 14vh, 160px) max(20px, 5vw);
 .clip .meta small { font-size: 13px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .clip .meta .genre { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); margin-top: 3px; }
 .clip canvas { width: 100%; height: 34px; margin-top: auto; display: block; }
+.clip .cov .pp b svg { margin-left: 2px; } /* optical centre for the play triangle */
+.clip .cov .pp b[data-state="pause"] svg { margin-left: 0; }
+.step-copy .clip.in-copy { margin-top: 22px; max-width: 420px; pointer-events: auto; background: rgba(255,255,255,.05); }
+.step-copy .clip.in-copy .cov .pp { opacity: 1; background: rgba(0,0,0,.18); }
 
 /* ---------- How it works (particles) ---------- */
 .how { position: relative; height: 460vh; }
