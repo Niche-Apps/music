@@ -6,6 +6,7 @@ export type Panel = 'none' | 'queue'
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 const glyph = (svg: string, cls = 'glyph') => `<span class="${cls}">${svg}</span>`
+const smooth = (t: number) => { const x = Math.max(0, Math.min(1, t)); return x * x * (3 - 2 * x) }
 const explicitBadge = (t: Track) => (t.explicit ? '<i class="explicit">E</i>' : '')
 
 /** A progress ring like the app's RecordingRing. */
@@ -60,14 +61,104 @@ export class AppWindow {
       <div class="content"></div>
       <header class="toolbar"></header>
       <div class="overlay"></div>
-      <div class="cursor"><svg viewBox="0 0 28 28"><path d="M6 3.5v18.2l4.6-4.3 3.1 7.1 3.3-1.4-3.1-7h6.4Z" fill="#000" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg><i class="ripple"></i></div>`
+      <div class="cursor"><i class="ripple"></i><svg viewBox="0 0 32 32"><defs><linearGradient id="cg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff7a92"/><stop offset="1" stop-color="#ff4467"/></linearGradient></defs>
+        <path d="M7.2 5.1c-.9-.5-2 .3-1.8 1.3l3.6 19.3c.2 1 1.5 1.3 2.1.5l4.6-5.9c.3-.4.7-.6 1.2-.6l7.4-.6c1-.1 1.4-1.4.6-2Z" fill="url(#cg)" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg></div>`
     this.nav = this.el.querySelector('.nav')!
     this.content = this.el.querySelector('.content')!
     this.toolbar = this.el.querySelector('.toolbar')!
     this.overlay = this.el.querySelector('.overlay')!
     this.renderNav('home')
+    this.nav.insertAdjacentHTML('afterbegin', '<i class="sel"></i>')
     this.renderToolbar()
-    this.show('home')
+    this.buildLayers()
+  }
+
+  // ---------- Layers ----------
+
+  /** Every screen the tour visits exists at once; the tour blends between them by scroll. */
+  readonly pages = new Map<string, HTMLElement>()
+
+  private buildLayers() {
+    const add = (key: string, html: string, root = false) => {
+      const page = document.createElement('div')
+      page.className = `page layer-${key}`
+      page.dataset.layer = key
+      page.innerHTML = html
+      page.style.visibility = 'hidden'
+      ;(root ? this.el : this.content).appendChild(page)
+      this.pages.set(key, page)
+    }
+    add('home', this.homeHTML())
+    add('artists', this.artistsHTML())
+    add('album', this.albumHTML(this.cast.album))
+    add('create', this.createHTML())
+    add('browse', this.browseHTML())
+    add('np', this.nowPlayingHTML(), true)
+    this.lyricsLines = [...this.pages.get('np')!.querySelectorAll<HTMLElement>('.ln')]
+    this.setPlaying(this.playing)
+  }
+
+  /**
+   * Shows layers by weight (0…1). Pages stack in tour order; the arriving page fades and settles
+   * in over the one leaving, so there's never a dip to an empty window. Now Playing slides up.
+   */
+  setLayers(weights: Map<string, number>, order: string[], push = false) {
+    let top = ''
+    for (const key of order) if ((weights.get(key) ?? 0) > 0.001) top = key
+    for (const [key, page] of this.pages) {
+      const w = weights.get(key) ?? 0
+      if (w <= 0.001) { if (page.style.visibility !== 'hidden') page.style.visibility = 'hidden'; continue }
+      page.style.visibility = 'visible'
+      page.style.zIndex = String(key === 'np' ? 20 : order.indexOf(key) + 1)
+      if (key === 'np') {
+        page.style.transform = `translate3d(0, ${(1 - w) * 100}%, 0)`
+        page.style.borderRadius = `${(1 - w) * 16}px`
+        continue
+      }
+      const arriving = key === top && w < 0.999
+      if (arriving && push) {
+        // Navigation push: the new page slides in from the right over the old one.
+        page.style.opacity = '1'
+        page.style.transform = `translate3d(${(1 - w) * 104}%, 0, 0)`
+        page.style.boxShadow = '-20px 0 40px rgba(0,0,0,.25)'
+      } else {
+        // Sidebar switch: like the real app, the content is replaced outright (no double
+        // exposure); only the new content settles into place.
+        page.style.opacity = '1'
+        page.style.transform = ''
+        page.style.boxShadow = ''
+        const inner = page.firstElementChild as HTMLElement | null
+        if (inner && !inner.classList.contains('scroller')) inner.style.transform = ''
+        page.style.setProperty('--settle', arriving ? String(1 - w) : '0')
+      }
+    }
+    const best = [...weights.entries()].sort((a, b) => b[1] - a[1])[0]
+    this.view = (best?.[0] === 'np' ? 'nowplaying' : best?.[0] ?? 'home') as View
+  }
+
+  /** Sidebar selection: the highlight glides between items by weight. */
+  setNav(weights: Map<string, number>) {
+    const pill = this.nav.querySelector<HTMLElement>('.sel')!
+    let top = 0, total = 0, best = '', bw = 0
+    for (const [key, w] of weights) {
+      const item = this.nav.querySelector<HTMLElement>(`.item[data-key="${key}"]`)
+      if (!item || w <= 0) continue
+      top += item.offsetTop * w; total += w
+      if (w > bw) { bw = w; best = key }
+    }
+    if (!total) { pill.style.opacity = '0'; return }
+    pill.style.opacity = '1'
+    pill.style.transform = `translate3d(0, ${top / total}px, 0)`
+    this.nav.querySelectorAll<HTMLElement>('.item').forEach((i) => i.classList.toggle('selected', i.dataset.key === best))
+  }
+
+  /** Toolbar: back button (album) and the see-through look over artist banners, both 0…1. */
+  setChrome(back: number, overImage: number) {
+    const b = this.toolbar.querySelector<HTMLElement>('.back')!
+    b.style.opacity = String(back)
+    b.style.transform = `translate3d(${(back - 1) * 12}px, 0, 0)`
+    this.toolbar.querySelector<HTMLElement>('.transport')!.style.transform = `translate3d(${back * 45}px, 0, 0)`
+    this.toolbar.style.setProperty('--over', String(overImage))
   }
 
   // ---------- Chrome ----------
@@ -87,10 +178,13 @@ export class AppWindow {
   renderToolbar(opts: { back?: boolean; overImage?: boolean } = {}) {
     const { track, album, artist } = this.current
     const panelOn = this.el.dataset.panel === 'queue'
-    this.toolbar.className = `toolbar ${opts.back ? 'has-back' : ''} ${opts.overImage ? 'over-image' : ''}`
+    void opts
+    const keep = this.toolbar.querySelector<HTMLElement>('.back')?.style.cssText ?? 'opacity:0'
+    const keepT = this.toolbar.querySelector<HTMLElement>('.transport')?.style.cssText ?? ''
+    this.toolbar.className = 'toolbar'
     this.toolbar.innerHTML = `
-      ${opts.back ? `<div class="capsule back"><button>${glyph(icon.chevronLeft, '')}</button></div>` : ''}
-      <div class="capsule transport">
+      <div class="capsule back" style="${keep}"><button>${glyph(icon.chevronLeft, '')}</button></div>
+      <div class="capsule transport" style="${keepT}">
         <button>${glyph(icon.shuffle, '')}</button><button>${glyph(icon.backward, '')}</button>
         <button class="play" data-act="toggle">${glyph(this.playing ? icon.pause : icon.play, '')}</button>
         <button>${glyph(icon.forward, '')}</button><button>${glyph(icon.repeat, '')}</button>
@@ -120,38 +214,12 @@ export class AppWindow {
   }
 
   setNowPlaying(np: NowPlaying) {
+    if (np.track.id === this.current.track.id) return
     this.current = np
-    this.renderToolbar({ back: this.toolbar.classList.contains('has-back'), overImage: this.toolbar.classList.contains('over-image') })
+    this.renderToolbar()
   }
 
   // ---------- Views ----------
-
-  show(view: View, arg?: string) {
-    this.view = view
-    const page = document.createElement('div')
-    page.className = 'page'
-    let back = false
-    let overImage = false
-    let selected = view as string
-    switch (view) {
-      case 'home': page.innerHTML = this.homeHTML(); break
-      case 'browse': page.innerHTML = this.browseHTML(); break
-      case 'artists': page.innerHTML = this.artistsHTML(arg ?? this.cast.artists[0]); overImage = true; break
-      case 'album': page.innerHTML = this.albumHTML(arg ?? this.cast.album); back = true; selected = 'albums'; break
-      case 'songs': page.innerHTML = this.songsHTML(); break
-      case 'nowplaying': page.innerHTML = this.nowPlayingHTML(); break
-      case 'create': page.innerHTML = this.createHTML(); break
-    }
-    this.renderNav(selected)
-    this.renderToolbar({ back, overImage })
-    const old = this.content.querySelector('.page')
-    this.content.appendChild(page)
-    if (old) old.remove()
-    this.el.dataset.view = view
-    this.lyricsLines = [...page.querySelectorAll<HTMLElement>('.ln')]
-    this.setPlaying(this.playing)
-    return page
-  }
 
   private card(al: Album) {
     const artist = this.lib.artist(al.artistID)
@@ -214,11 +282,37 @@ export class AppWindow {
       <div class="genre-grid">${tiles.join('')}</div></div>`
   }
 
-  artistsHTML(selectedID: string) {
+  artistsHTML() {
     const rows = this.lib.artists.map((a) =>
-      `<div class="artist-row ${a.id === selectedID ? 'selected' : ''}" data-artist="${a.id}"><img src="${media.artistThumb(a.id)}" alt="" loading="lazy"><span>${esc(a.name)}</span></div>`).join('')
-    return `<div class="artist-list"><div class="filter">Filter Artists</div><div class="rows">${rows}</div></div>
-      <div class="artist-detail" style="position:absolute;inset:0 0 0 230px">${this.artistPageHTML(selectedID)}</div>`
+      `<div class="artist-row" data-artist="${a.id}"><img src="${media.artistThumb(a.id)}" alt="" loading="lazy"><span>${esc(a.name)}</span></div>`).join('')
+    const details = this.cast.artists.map((id) => `<div class="detail" data-artist="${id}">${this.artistPageHTML(id)}</div>`).join('')
+    return `<div class="artist-list"><div class="filter">Filter Artists</div><div class="rows"><i class="row-sel"></i>${rows}</div></div>
+      <div class="artist-detail">${details}</div>`
+  }
+
+  /** Artists layer: f runs 0…n-1 across the cast; the selection glides, banners crossfade. */
+  setArtistFocus(f: number) {
+    const page = this.pages.get('artists')!
+    const ids = this.cast.artists
+    const i = Math.max(0, Math.min(ids.length - 1, Math.floor(f)))
+    const j = Math.min(ids.length - 1, i + 1)
+    // Hold on each artist, then move to the next in the last third of the segment.
+    const k = ids.length > 1 ? smooth((f - i - 0.62) / 0.3) : 0
+    const rows = page.querySelector<HTMLElement>('.rows')!
+    const rowA = rows.querySelector<HTMLElement>(`.artist-row[data-artist="${ids[i]}"]`)!
+    const rowB = rows.querySelector<HTMLElement>(`.artist-row[data-artist="${ids[j]}"]`)!
+    const y = rowA.offsetTop + (rowB.offsetTop - rowA.offsetTop) * k
+    rows.querySelector<HTMLElement>('.row-sel')!.style.transform = `translate3d(0, ${y}px, 0)`
+    rows.style.transform = `translate3d(0, ${-Math.max(0, y - 280)}px, 0)`
+    rows.querySelectorAll('.artist-row').forEach((r) => r.classList.toggle('selected', r === (k < 0.5 ? rowA : rowB)))
+    page.querySelectorAll<HTMLElement>('.detail').forEach((d) => {
+      const w = d.dataset.artist === ids[i] ? (i === j ? 1 : 1 - k) : d.dataset.artist === ids[j] ? k : 0
+      d.style.visibility = w > 0.001 ? 'inherit' : 'hidden'
+      d.style.opacity = String(d.dataset.artist === ids[j] && i !== j ? k : 1)
+      d.style.zIndex = d.dataset.artist === ids[j] ? '2' : '1'
+      const img = d.querySelector<HTMLElement>('.banner img')
+      if (img) img.style.transform = `scale(${1.06 - 0.06 * (d.dataset.artist === ids[j] ? k : 1)})`
+    })
   }
 
   artistPageHTML(id: string) {
@@ -272,23 +366,6 @@ export class AppWindow {
     </div>`
   }
 
-  private songsHTML() {
-    const rows: string[] = []
-    const all = this.lib.albums.flatMap((al) => al.tracks.map((t) => ({ t, al })))
-    const recorded = all.filter((x) => x.t.ready)
-    const list = [...recorded, ...all.filter((x) => !x.t.ready).slice(0, 40)]
-    for (const { t, al } of list.slice(0, 40)) {
-      const isCur = t.id === this.current.track.id
-      rows.push(`<div class="trow ${t.ready ? '' : 'pending'}"><span class="st">${isCur ? '<span class="eq"><i></i><i></i><i></i></span>' : ''}</span>
-        <span class="c-title">${esc(t.title)} ${explicitBadge(t)}</span><span class="c-artist">${esc(this.lib.artist(al.artistID).name)}</span>
-        <span class="c-album">${esc(al.title)}</span><span class="c-time">${t.ready ? fmt.time(t.duration) : ''}</span><span class="c-plays">${t.ready ? Math.ceil(seeded(t.id)() * 9) : ''}</span>
-        <span class="c-star">${icon.star}</span></div>`)
-    }
-    return `<div class="scroller"><div class="songs-head"><div><h1 class="page-title">Songs</h1><div class="page-sub">${all.length.toLocaleString()} songs · ${recorded.length} recorded</div></div>
-      <div style="display:flex;align-items:center"><div class="segmented"><span>All</span><span class="on">Recorded</span><span>Not Recorded</span></div><div class="filter-field">Filter</div></div></div>
-      <div class="table"><div class="thead"><span class="c-title">Title</span><span class="c-artist">Artist</span><span class="c-album">Album</span><span class="c-time">Time</span><span class="c-plays">Plays</span></div>${rows.join('')}</div></div>`
-  }
-
   private nowPlayingHTML() {
     const { track, album, artist } = this.current
     const pal = album.palette.length ? album.palette : ['#5a3a10', '#2a1a08', '#8a5a20']
@@ -338,31 +415,39 @@ export class AppWindow {
 
   /** Create page: the describe field, typed out by the tour. */
   typeCreate(text: string, pressed = false) {
-    const box = this.content.querySelector('.create .describe')
+    const box = this.pages.get('create')?.querySelector('.create .describe')
     if (!box) return
     box.querySelector('.typed')!.textContent = text
     box.querySelector<HTMLElement>('.placeholder')!.style.display = text ? 'none' : ''
     box.classList.toggle('focus', text.length > 0)
-    this.content.querySelector('.create-btn')?.classList.toggle('ready', text.length > 0)
-    this.content.querySelector('.create-btn')?.classList.toggle('busy', pressed)
+    const btn = this.pages.get('create')?.querySelector('.create-btn')
+    btn?.classList.toggle('ready', text.length > 0)
+    btn?.classList.toggle('busy', pressed)
   }
 
   /** Artist page: the New Release popover (brief text), or closed. */
-  newRelease(state: { brief: string } | null) {
-    const page = this.content.querySelector('.artist-detail > div:last-child') ?? this.content
-    page.querySelector('.nr-pop')?.remove()
-    const pill = page.querySelector<HTMLElement>('.pill.nr')
-    pill?.classList.toggle('active', !!state)
-    if (!state || !pill) return
-    const a = this.lib.artist(this.cast.artists[this.cast.artists.length - 1])
-    const pop = document.createElement('div')
-    pop.className = 'nr-pop'
-    pop.innerHTML = `<b>New release from ${esc(a.name)}</b><small>Their next chapter: a new album with tracklist, liner notes and cover. Takes a minute or two.</small>
-      <div class="field ${state.brief ? 'focus' : ''}">${state.brief ? esc(state.brief) + '<i class="caret"></i>' : '<span>Optional brief — “a stripped-back winter record”</span>'}</div>
-      <div class="row"><span>Cancel</span><span class="go">Write It</span></div>`
-    const banner = page.querySelector<HTMLElement>('.banner')!
-    banner.appendChild(pop)
-    pop.style.left = `${pill.offsetLeft + pill.offsetWidth / 2 - 170 + 32}px`
+  newRelease(open: number, brief = '') {
+    const id = this.cast.artists[this.cast.artists.length - 1]
+    const page = this.pages.get('artists')!.querySelector<HTMLElement>(`.detail[data-artist="${id}"]`)!
+    const pill = page.querySelector<HTMLElement>('.pill.nr')!
+    let pop = page.querySelector<HTMLElement>('.nr-pop')
+    if (!pop) {
+      const a = this.lib.artist(id)
+      pop = document.createElement('div')
+      pop.className = 'nr-pop'
+      pop.innerHTML = `<b>New release from ${esc(a.name)}</b><small>Their next chapter: a new album with tracklist, liner notes and cover. Takes a minute or two.</small>
+        <div class="field"></div><div class="row"><span>Cancel</span><span class="go">Write It</span></div>`
+      page.querySelector<HTMLElement>('.banner')!.appendChild(pop)
+      pop.style.left = `${pill.offsetLeft + pill.offsetWidth / 2 - 170 + 32}px`
+    }
+    const v = Math.max(0, Math.min(1, open))
+    pill.classList.toggle('active', v > 0.5)
+    pop.style.visibility = v > 0.001 ? 'inherit' : 'hidden'
+    pop.style.opacity = String(v)
+    pop.style.transform = `translate3d(0, ${(1 - v) * 10}px, 0) scale(${0.95 + v * 0.05})`
+    const field = pop.querySelector<HTMLElement>('.field')!
+    const html = brief ? esc(brief) + '<i class="caret"></i>' : '<span>Optional brief — “a stripped-back winter record”</span>'
+    if (field.dataset.v !== brief) { field.dataset.v = brief; field.innerHTML = html; field.classList.toggle('focus', !!brief) }
   }
 
   // ---------- Cursor ----------
@@ -394,38 +479,19 @@ export class AppWindow {
 
   // ---------- Live state for the tour ----------
 
-  /** Artists view: select the n-th artist in the list, scrolling the list to keep it in view. */
-  selectArtist(id: string) {
-    const page = this.content.querySelector('.page')
-    if (!page || this.view !== 'artists') return
-    const rows = [...page.querySelectorAll<HTMLElement>('.artist-row')]
-    const i = rows.findIndex((r) => r.dataset.artist === id)
-    rows.forEach((r, k) => { r.classList.toggle('selected', k === i); r.classList.toggle('before-selected', k === i - 1) })
-    const list = page.querySelector<HTMLElement>('.artist-list .rows')!
-    const offset = Math.max(0, i * 44 - 300)
-    list.style.transform = `translateY(${-offset}px)`
-    const detail = page.querySelector<HTMLElement>('.artist-detail')!
-    const next = document.createElement('div')
-    next.style.cssText = 'position:absolute;inset:0;opacity:0;transition:opacity .45s ease'
-    next.innerHTML = this.artistPageHTML(id)
-    detail.appendChild(next)
-    requestAnimationFrame(() => requestAnimationFrame(() => (next.style.opacity = '1')))
-    setTimeout(() => { while (detail.children.length > 1) detail.firstElementChild!.remove() }, 500)
-  }
-
-  private scroller() {
-    return this.content.querySelector<HTMLElement>('.page > .scroller, .artist-detail > div:last-child > .scroller')
+  private scroller(layer = 'home') {
+    return this.pages.get(layer)?.querySelector<HTMLElement>(':scope > .scroller') ?? null
   }
 
   /** Scrolls the current page's content (0…max px). */
-  scrollPage(px: number) {
-    const s = this.scroller()
+  scrollPage(px: number, layer = 'home') {
+    const s = this.scroller(layer)
     if (s) s.style.transform = `translate3d(0, ${-px}px, 0)`
   }
 
   /** Scrolls the current page from top (0) to its real bottom (1), like the app's own scroll view. */
-  scrollFraction(f: number) {
-    const s = this.scroller()
+  scrollFraction(f: number, layer = 'home') {
+    const s = this.scroller(layer)
     if (!s) return
     const max = Math.max(0, s.scrollHeight + 32 - (s.parentElement?.clientHeight ?? 900))
     s.style.transform = `translate3d(0, ${-Math.round(Math.max(0, Math.min(1, f)) * max)}px, 0)`
@@ -435,18 +501,25 @@ export class AppWindow {
   setLyricsProgress(fraction: number) {
     const lines = this.lyricsLines
     if (!lines.length) return
-    const i = Math.min(lines.length - 1, Math.floor(fraction * lines.length))
-    lines.forEach((l, k) => { l.classList.toggle('on', k === i); l.classList.toggle('past', k < i) })
-    const box = this.content.querySelector<HTMLElement>('.np .lyrics')
-    if (box) box.style.transform = `translateY(${360 - lines[i].offsetTop}px)`
+    const f = Math.max(0, Math.min(lines.length - 1, fraction * lines.length - 0.5))
+    lines.forEach((l, k) => {
+      const d = Math.abs(k - f)
+      l.style.opacity = String(k < f ? Math.max(0.5, 1 - d * 0.5) : Math.max(0.3, 1 - d * 0.7))
+      l.style.filter = d < 0.6 ? 'none' : 'blur(0.6px)'
+    })
+    const a = lines[Math.floor(f)], b = lines[Math.min(lines.length - 1, Math.floor(f) + 1)]
+    const y = a.offsetTop + (b.offsetTop - a.offsetTop) * (f - Math.floor(f))
+    const box = this.pages.get('np')?.querySelector<HTMLElement>('.lyrics')
+    if (box) box.style.transform = `translate3d(0, ${360 - y}px, 0)`
   }
 
   /** Now Playing while the song is still being recorded: the In the Studio card. */
   setStudio(fraction: number | null) {
-    const host = this.content.querySelector<HTMLElement>('.np .studio-host')
-    const lyrics = this.content.querySelector<HTMLElement>('.np .lyrics')
+    const host = this.pages.get('np')?.querySelector<HTMLElement>('.studio-host')
+    const lyrics = this.pages.get('np')?.querySelector<HTMLElement>('.lyrics')
     if (!host || !lyrics) return
-    if (fraction == null) { host.innerHTML = ''; lyrics.style.opacity = '1'; return }
+    if (fraction == null) { host.style.opacity = '0'; lyrics.style.opacity = '1'; return }
+    host.style.opacity = '1'
     lyrics.style.opacity = '0'
     const steps = ['Writing lyrics', 'Writing the score', 'Laying down the tracks', 'Mixing', 'Mastering']
     const stops = [0, 0.1, 0.3, 0.82, 0.93, 1]
@@ -471,47 +544,35 @@ export class AppWindow {
     })
   }
 
-  /** Up Next side panel. */
-  panel(which: Panel) {
-    this.el.dataset.panel = which
-    this.el.querySelector('.side')?.remove()
-    if (which === 'queue') {
-      const { album, track } = this.current
-      const after = album.tracks.filter((t) => t.n > track.n).slice(0, 12)
-      const side = document.createElement('div')
-      side.className = 'side'
-      side.innerHTML = `<div class="h">Now Playing</div>
-        <div class="qrow"><img src="${media.cover(album.id)}" alt=""><div class="t"><b>${esc(track.title)}</b><small>${esc(this.current.artist.name)}</small></div><span class="d">${fmt.time(track.duration)}</span></div>
-        <div class="h" style="margin-top:12px">Up Next</div><div class="sub">Playing from ${esc(album.title)}</div><span class="clear">Clear</span>
-        ${after.map((t, i) => `<div class="qrow ${t.ready ? '' : 'pending'}"><img src="${media.cover(album.id)}" alt=""><div class="t"><b>${esc(t.title)}</b><small>${t.ready ? esc(this.current.artist.name) : i < 2 ? '<span class="tag">Recording ahead…</span>' : 'Records when it’s close'}</small></div><span class="d">${t.ready ? fmt.time(t.duration) : ''}</span></div>`).join('')}
-        <div class="h" style="margin-top:14px">Autoplay</div><div class="sub">Keeps similar music playing — a similar album starts after the last song.</div>`
-      this.el.appendChild(side)
+  /** Share sheet over the album page, 0 (closed) … 1 (open): it drops from the toolbar like a macOS sheet. */
+  shareSheet(k: number) {
+    if (!this.overlay.firstElementChild) {
+      const al = this.lib.album(this.cast.album)
+      const a = this.lib.artist(al.artistID)
+      const recorded = al.tracks.filter((t) => t.ready).length
+      this.overlay.innerHTML = `<div class="scrim"></div><div class="sheet">
+        <div class="top"><img src="${media.cover(al.id)}" alt=""><div><b>Share “${esc(al.title)}”</b><small>by ${esc(a.name)}</small></div></div>
+        <p>Your friend gets the album, the artwork, and everything that makes ${esc(a.name)} who they are, so new songs and albums they make on their own Mac stay in character. Your plays and favorites stay private.</p>
+        <div class="choice on"><span class="radio"></span><div><b>Include recordings</b><small>${recorded} of ${al.tracks.length} songs · ${(recorded * 5.2).toFixed(1)} MB. ${recorded === al.tracks.length ? 'They can press play right away.' : 'These play right away; the rest record on their Mac.'}</small></div></div>
+        <div class="choice"><span class="radio"></span><div><b>Songs only</b><small>A tiny file. Their Mac records each song the first time they play it.</small></div></div>
+        <div class="buttons"><span>Cancel</span><span>Save As…</span><span class="primary">${icon.share} Share…</span></div></div>`
     }
-    this.renderToolbar({ back: this.toolbar.classList.contains('has-back'), overImage: this.toolbar.classList.contains('over-image') })
+    const v = Math.max(0, Math.min(1, k))
+    this.overlay.style.visibility = v > 0.001 ? 'visible' : 'hidden'
+    this.overlay.querySelector<HTMLElement>('.scrim')!.style.opacity = String(v)
+    const sheet = this.overlay.querySelector<HTMLElement>('.sheet')!
+    sheet.style.transform = `translate3d(0, ${(1 - v) * -110}%, 0)`
+    sheet.style.clipPath = `inset(${(1 - v) * 100}% 0 0 0 round 16px)`
   }
 
-  /** Share sheet over the album page. */
-  shareSheet(on: boolean) {
-    this.overlay.innerHTML = ''
-    if (!on) return
-    const al = this.lib.album(this.cast.album)
-    const a = this.lib.artist(al.artistID)
-    const recorded = al.tracks.filter((t) => t.ready).length
-    this.overlay.innerHTML = `<div class="scrim"></div><div class="sheet">
-      <div class="top"><img src="${media.cover(al.id)}" alt=""><div><b>Share “${esc(al.title)}”</b><small>by ${esc(a.name)}</small></div></div>
-      <p>Your friend gets the album, the artwork, and everything that makes ${esc(a.name)} who they are, so new songs and albums they make on their own Mac stay in character. Your plays and favorites stay private.</p>
-      <div class="choice on"><span class="radio"></span><div><b>Include recordings</b><small>${recorded} of ${al.tracks.length} songs · ${(recorded * 5.2).toFixed(1)} MB. ${recorded === al.tracks.length ? 'They can press play right away.' : 'These play right away; the rest record on their Mac.'}</small></div></div>
-      <div class="choice"><span class="radio"></span><div><b>Songs only</b><small>A tiny file. Their Mac records each song the first time they play it.</small></div></div>
-      <div class="buttons"><span>Cancel</span><span>Save As…</span><span class="primary">${icon.share} Share…</span></div></div>`
-  }
-
-  toast(text: string | null) {
-    this.el.querySelector('.toast')?.remove()
-    if (!text) return
-    const t = document.createElement('div')
-    t.className = 'toast'
-    t.innerHTML = text
-    this.el.appendChild(t)
+  /** A toast at the bottom of the window; k fades and lifts it. */
+  toast(text: string | null, k = 1) {
+    let t = this.el.querySelector<HTMLElement>(':scope > .toast')
+    if (!text || k <= 0.001) { if (t) t.style.opacity = '0'; return }
+    if (!t) { t = document.createElement('div'); t.className = 'toast'; this.el.appendChild(t) }
+    if (t.dataset.text !== text) { t.dataset.text = text; t.innerHTML = text }
+    t.style.opacity = String(k)
+    t.style.transform = `translate3d(-50%, ${(1 - k) * 16}px, 0)`
   }
 
   /** Types into the sidebar search field. */
