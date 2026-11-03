@@ -19,6 +19,9 @@ packages:
     path: Packages/StandardKit
   YuEKit:
     path: Packages/YuEKit
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.10.1
 targets:
   StandardMusic:
     type: application
@@ -30,6 +33,8 @@ targets:
     dependencies:
       - package: StandardKit
         product: StandardKit
+      - package: Sparkle
+        product: Sparkle
       - target: StandardMusicEngine
         embed: true
         codeSign: true

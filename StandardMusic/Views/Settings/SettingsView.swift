@@ -39,9 +39,10 @@ struct GeneralSettings: View {
     @AppStorage(Pref.showDockIcon) private var showDockIcon = true
     @AppStorage(Pref.notifyWhenReady) private var notifyWhenReady = true
     @AppStorage(Pref.miniPlayerFloats) private var miniPlayerFloats = true
+    @State private var updater = AppUpdater.shared
 
     var body: some View {
-        SettingsPane(height: 400) {
+        SettingsPane(height: 520) {
             Section {
                 Toggle(isOn: $menuBarEnabled) {
                     Text("Show in menu bar")
@@ -71,6 +72,24 @@ struct GeneralSettings: View {
                     if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
                         NSWorkspace.shared.open(url)
                     }
+                }
+            }
+            Section("Updates") {
+                Toggle(isOn: $updater.automaticallyChecksForUpdates) {
+                    Text("Automatically check for updates")
+                    Text("Looks for a new version once a day.")
+                }
+                Toggle(isOn: $updater.automaticallyDownloadsUpdates) {
+                    Text("Automatically download and install")
+                    Text("New versions install the next time Standard Music quits.")
+                }
+                .disabled(!updater.automaticallyChecksForUpdates)
+                HStack {
+                    Text("Version \(AppUpdater.currentVersion)")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Check Now") { updater.checkForUpdates() }
+                        .disabled(!updater.canCheckForUpdates)
                 }
             }
         }

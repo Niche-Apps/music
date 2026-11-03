@@ -64,6 +64,18 @@
 			</dict>
 		</dict>
 	</array>
+	<key>SUFeedURL</key>
+	<string>https://github.com/justin-schroeder/StandardMusic/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>a17SU2bkzltaT8nOfIWSAk/Mr2bWwboQlntPQqiQ9sU=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUAllowsAutomaticUpdates</key>
+	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

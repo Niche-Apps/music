@@ -28,7 +28,16 @@ records ahead while you listen.
 brew install xcodegen
 tools/build.sh Release        # generates the Xcode project and builds build/dev/…/Standard Music.app
 tools/release.sh              # Developer ID signed + notarized build/release/StandardMusic.zip
+tools/publish-release.sh 1.1  # bump, build, tag, push, GitHub release with zip + Sparkle appcast.xml
 ```
+
+Updates use [Sparkle 2](https://sparkle-project.org). The app reads
+`releases/latest/download/appcast.xml` (`SUFeedURL` in `StandardMusic/Info.plist`), so the GitHub repo
+must be public for update checks to work. Releases are signed with an EdDSA key whose private half lives
+only in the release Mac's login keychain (item "Private key for signing Sparkle updates", made by
+Sparkle's `generate_keys`); its public half is `SUPublicEDKey`. Back it up with `generate_keys -x <file>`
+and import it elsewhere with `generate_keys -f <file>`. If it is lost, installed copies can no longer
+verify updates and need a manual download.
 
 Layout:
 

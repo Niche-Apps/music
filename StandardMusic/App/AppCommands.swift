@@ -12,6 +12,10 @@ struct AppCommands: Commands {
     private var inLibrary: Bool { model.phase == .library }
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            CheckForUpdatesButton()
+        }
+
         CommandGroup(replacing: .newItem) {
             Button("New Playlist") { AppActions.newPlaylist(model, openWindow: openWindow) }
                 .keyboardShortcut("n")
@@ -84,6 +88,16 @@ struct AppCommands: Commands {
                 .keyboardShortcut("0")
             Divider()
         }
+    }
+}
+
+/// "Check for Updates…" in the app menu; dimmed while Sparkle is already checking.
+struct CheckForUpdatesButton: View {
+    @State private var updater = AppUpdater.shared
+
+    var body: some View {
+        Button("Check for Updates…") { updater.checkForUpdates() }
+            .disabled(!updater.canCheckForUpdates)
     }
 }
 

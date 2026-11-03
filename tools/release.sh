@@ -15,12 +15,20 @@ ENTITLEMENTS="$ROOT/StandardMusic/StandardMusic.entitlements"
 rm -rf "$OUT"; mkdir -p "$OUT"
 ditto "$ROOT/build/dev/Build/Products/Release/Standard Music.app" "$APP"
 
-# Inside out: the helper first, then the app (which seals the resource bundles).
-codesign --force --timestamp --options runtime --sign "$IDENTITY" \
-  --identifier com.standardmusic.engine "$APP/Contents/MacOS/StandardMusicEngine"
-codesign --force --timestamp --options runtime --sign "$IDENTITY" \
-  --entitlements "$ENTITLEMENTS" "$APP"
+# Inside out: the helper and Sparkle's nested executables first, then the app (which seals the
+# resource bundles and frameworks). Sparkle's order follows its "Sandboxing/Code Signing" docs; the app
+# isn't sandboxed, so its XPC services aren't used and are removed rather than shipped.
+sign() { codesign --force --timestamp --options runtime --sign "$IDENTITY" "$@"; }
+sign --identifier com.standardmusic.engine "$APP/Contents/MacOS/StandardMusicEngine"
+SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
+rm -rf "$SPARKLE/Versions/B/XPCServices" "$SPARKLE/XPCServices"
+sign "$SPARKLE/Versions/B/Autoupdate"
+sign "$SPARKLE/Versions/B/Updater.app"
+sign "$SPARKLE"
+sign --entitlements "$ENTITLEMENTS" "$APP"
 codesign --verify --strict --deep --verbose=2 "$APP"
+[[ -n "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist" 2>/dev/null)" ]] \
+  || { echo "Info.plist has no SUPublicEDKey; updates couldn't be verified." >&2; exit 1; }
 
 ditto -c -k --keepParent "$APP" "$OUT/notarize.zip"
 xcrun notarytool submit "$OUT/notarize.zip" --keychain-profile "$PROFILE" --wait

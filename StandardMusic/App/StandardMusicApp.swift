@@ -60,7 +60,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // AppKit state restoration can bring back a main window hidden by "Switch to MiniPlayer"
         // (which isn't restored), leaving no window at all. AppModel restores the session itself.
         UserDefaults.standard.register(defaults: ["ApplePersistenceIgnoreState": true])
-        MainActor.assumeIsolated { AppActions.applyDockIconPolicy() }
+        MainActor.assumeIsolated {
+            AppActions.applyDockIconPolicy()
+            _ = AppUpdater.shared  // starts Sparkle's scheduled update checks
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
