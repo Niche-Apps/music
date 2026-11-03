@@ -22,7 +22,7 @@ async function boot() {
   const cast = chooseCast(lib)
   const player = new Player(lib)
 
-  const lenis = new Lenis({ lerp: 0.085, wheelMultiplier: 0.9 })
+  const lenis = new Lenis({ lerp: 0.16, wheelMultiplier: 1 })
   lenis.on('scroll', ScrollTrigger.update)
   gsap.ticker.add((t) => lenis.raf(t * 1000))
   gsap.ticker.lagSmoothing(0)
@@ -101,7 +101,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
       body: `Tell it what you love. Standard Music invents the artists, writes their discographies, art-directs the covers and fills your library: ${lib.artists.length} artists and ${lib.albums.length} albums deep, all of them only yours.`,
       chips: ['Fresh from the Studio', 'Recently Played', 'Because you like…'],
       enter: () => win.show('home'),
-      update: (t) => win.scrollPage(ease(clamp((t - 0.15) / 0.8)) * 330),
+      update: (t) => win.scrollFraction(t / 0.92),
     },
     {
       kicker: 'Artists', title: 'Artists with a past.',
@@ -118,7 +118,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
       body: 'Every release has a track list, a label, a year and editor’s notes. Each cover gets its own direction: a band photo, a painting, a typographic sleeve, a collage.',
       chips: ['Track lists', 'Cover art', 'Explicit badges'],
       enter: () => win.show('album', cast.album),
-      update: (t) => win.scrollPage(ease(clamp((t - 0.35) / 0.6)) * 260),
+      update: (t) => win.scrollFraction(t / 0.92),
     },
     {
       kicker: 'In the studio', title: 'Press play, and your Mac records it.',
@@ -150,14 +150,14 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
       kicker: 'Browse', title: 'Every sound in your library, by genre.',
       body: 'Browse groups your library into the genres you actually own, from Italian opera to arena rock. Each genre stays true to how it sounds on real records.',
       enter: () => win.show('browse'),
-      update: (t) => win.scrollPage(ease(clamp((t - 0.3) / 0.6)) * 160),
+      update: (t) => win.scrollFraction(t / 0.92),
     },
     {
       kicker: 'Library', title: 'A real library, not a playlist.',
       body: 'Songs, plays, favourites, filters and search all live in a SQLite library on your Mac. It checks itself at every launch and keeps rolling backups.',
       chips: ['SQLite', 'Search', 'Favorites', 'Backups'],
       enter: () => win.show('songs'),
-      update: (t) => win.scrollPage(ease(clamp((t - 0.25) / 0.7)) * 360),
+      update: (t) => win.scrollFraction(t / 0.92),
     },
     {
       kicker: 'Sharing', title: 'Hand someone an entire band.',
@@ -258,10 +258,17 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
     const local = idx >= 0 ? clamp(s - idx) : 0
     if (idx >= 0) steps[idx].update?.(local)
     copies.forEach((c, i) => {
-      const d = s - i // 0…1 while this step is active
-      const vis = i === idx ? Math.min(clamp(d / 0.14), clamp((1 - d) / 0.14) + (i === steps.length - 1 ? 1 : 0)) : 0
+      // Each block scrolls with the page: in from below, through the middle while its step
+      // plays, out over the top. The last one settles in the middle.
+      let d = s - i
+      if (i === steps.length - 1) d = Math.min(d, 0.5)
+      const travel = L.mobile ? 0.32 : 0.9
+      const pos = (0.5 - d) * travel // viewport heights from centre
+      const vis = clamp((travel * 0.44 - Math.abs(pos)) / (travel * 0.2))
       c.style.opacity = String(vis)
-      c.style.transform = L.mobile ? `translateY(${(1 - vis) * 20}px)` : `translateY(calc(-50% + ${(1 - vis) * (d < 0.5 ? 26 : -26)}px))`
+      c.style.transform = L.mobile
+        ? `translate3d(0, ${pos * L.vh}px, 0)`
+        : `translate3d(0, calc(-50% + ${pos * L.vh}px), 0)`
       c.style.pointerEvents = vis > 0.5 ? 'auto' : 'none'
     })
     progress.style.opacity = String(clamp((y - 0.9) / 0.2) * (1 - clamp((y - end + 0.1) / 0.3)))

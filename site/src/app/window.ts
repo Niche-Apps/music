@@ -335,10 +335,22 @@ export class AppWindow {
     setTimeout(() => { while (detail.children.length > 1) detail.firstElementChild!.remove() }, 500)
   }
 
+  private scroller() {
+    return this.content.querySelector<HTMLElement>('.page > .scroller, .artist-detail > div:last-child > .scroller')
+  }
+
   /** Scrolls the current page's content (0…max px). */
   scrollPage(px: number) {
-    const s = this.content.querySelector<HTMLElement>('.page > .scroller, .artist-detail > div:last-child > .scroller')
-    if (s) s.style.transform = `translateY(${-px}px)`
+    const s = this.scroller()
+    if (s) s.style.transform = `translate3d(0, ${-px}px, 0)`
+  }
+
+  /** Scrolls the current page from top (0) to its real bottom (1), like the app's own scroll view. */
+  scrollFraction(f: number) {
+    const s = this.scroller()
+    if (!s) return
+    const max = Math.max(0, s.scrollHeight + 32 - (s.parentElement?.clientHeight ?? 900))
+    s.style.transform = `translate3d(0, ${-Math.round(Math.max(0, Math.min(1, f)) * max)}px, 0)`
   }
 
   /** Now Playing: highlight lyric line by fraction through the song. */
