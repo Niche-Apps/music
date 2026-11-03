@@ -178,7 +178,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
     },
     {
       kicker: 'In the studio', title: 'Press play. It’s recorded right then.',
-      body: 'Your Mac writes the lyrics and records the song in the artist’s voice with YuE2 on Apple silicon, in about the time it takes to make a coffee. Nobody has heard it before you.',
+      body: 'Your Mac writes the lyrics and records the song in the artist’s voice right there on Apple silicon, in about the time it takes to make a coffee. Nobody has heard it before you.',
       chips: ['Writing lyrics', 'Writing the score', 'Laying down the tracks', 'Mastering'],
       page: 'np', nav: 'artists', arrive: 'slide-up',
       update: (t) => win.setStudio(clamp(t * 1.1)),
@@ -529,10 +529,10 @@ function how(lib: Library, cast: Cast) {
   const peaks = cast.nowPlaying.track.peaks ?? Array.from({ length: 120 }, (_, i) => 0.3 + 0.7 * Math.abs(Math.sin(i * 0.3)))
   const field = new ParticleField($<HTMLCanvasElement>('canvas.field'), [tasteShape(genres), lyricShape(lyricLines), waveShape(peaks), recordShape])
   const phases = [
-    { k: '01 · Taste', t: 'It starts with what you love.', p: 'A two-minute quiz (genres, artists you know, this or that) becomes a taste profile. It decides which artists to invent: mostly your core genres, some neighbours, a few wildcards. How each genre sounds stays true to the genre.', spec: [['Input', 'Genres, favourite artists, eras'], ['Output', `A roster of ${lib.artists.length} artists`]] },
-    { k: '02 · Writing', t: 'GPT‑6.1 Terra writes every artist’s world.', p: 'Each artist gets a biography, a fixed voice, a hidden soul that keeps them in character, a discography and art-directed covers. Lyrics are written just before a song records, in that artist’s register.', spec: [['Model', 'GPT‑6.1 Terra, via your ChatGPT plan'], ['Writes', 'Bios, souls, albums, covers, lyrics']] },
-    { k: '03 · Recording', t: 'YuE2 records the song on your Mac.', p: 'An MLX port of the open YuE2 model turns lyrics and style tags into a finished, mastered track with vocals, band and mix. On Apple silicon a full song takes a few minutes, and record-ahead keeps the next one ready.', spec: [['Model', 'YuE2 · 8-bit · MLX'], ['Where', 'On your Mac, offline'], ['Output', 'AAC 256 kbps, loudness-matched']] },
-    { k: '04 · Your library', t: 'And then it’s yours.', p: 'Songs land in a library on your Mac with favourites, plays, search and backups. Share any album as a single file, and your friend’s Mac records whatever you didn’t send.', spec: [['Storage', 'SQLite and AAC on disk'], ['Sharing', '.standardalbum over AirDrop or Messages']] },
+    { k: '01 · Taste', t: 'It starts with what you love.', p: 'A two-minute quiz (genres, artists you know, this or that, your pet hates) becomes a taste profile. It decides who to invent: mostly what you love, some neighbours, a few wildcards.', spec: [['You give it', 'Genres, favourite artists, pet hates'], ['You get', `A starting roster of ${lib.artists.length} artists`]] },
+    { k: '02 · The artists', t: 'Every artist gets a whole world.', p: 'A biography, a voice that never changes, a hidden soul that keeps them in character, a discography that follows their career, and covers made for each record. Lyrics are written just before a song records, in that artist’s own register.', spec: [['Each artist', 'A backstory, a voice, a career arc'], ['Each album', 'Track list, liner notes, cover art']] },
+    { k: '03 · Recording', t: 'Then your Mac records the song.', p: 'Press play and your Mac performs it: vocals, band, mix and master, a finished track in a few minutes. Record-ahead keeps the next one ready, so the music doesn’t stop.', spec: [['Where', 'On your Mac, offline'], ['Sounds like', 'A finished, mastered record']] },
+    { k: '04 · Your library', t: 'And then it’s yours.', p: 'Songs land in your library with favourites, plays, search and backups. Share any album as a single file, and your friend’s Mac records whatever you didn’t send.', spec: [['Kept', 'On your Mac, backed up'], ['Shared', 'One file, over AirDrop or Messages']] },
   ]
   const host = $('.how-copy')
   host.innerHTML = phases.map((ph) => `<div class="phase"><div class="kicker">${ph.k}</div><h3>${ph.t}</h3><p>${ph.p}</p>
