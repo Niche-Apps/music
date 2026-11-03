@@ -339,7 +339,7 @@
 
 /* Share sheet */
 .mac .scrim { position: absolute; inset: 0; background: rgba(0,0,0,.28); z-index: 9; }
-.mac .sheet { position: absolute; top: 52px; left: 50%; width: 480px; margin-left: -240px; z-index: 10; border-radius: 16px; padding: 22px;
+.mac .sheet { will-change: transform, opacity; position: absolute; top: 52px; left: 50%; width: 480px; margin-left: -240px; z-index: 10; border-radius: 16px; padding: 22px;
   background: #33363f; box-shadow: 0 0 0 .5px rgba(0,0,0,.8), inset 0 0 0 1px rgba(255,255,255,.08), 0 30px 80px rgba(0,0,0,.6); }
 .mac .sheet .top { display: flex; gap: 14px; align-items: center; }
 .mac .sheet .top img { width: 72px; height: 72px; border-radius: 6px; object-fit: cover; }
@@ -467,7 +467,7 @@
 .mac .cursor .ripple { left: 7px; top: 5px; }
 .mac .cursor .ripple::after { background: rgba(253,76,107,.28); box-shadow: 0 0 0 2px rgba(255,138,160,.7); }
 /* New sidebar content settles in: a few points of lift and a touch of fade on its contents, never the whole page. */
-.mac .content .page > * { translate: 0 calc(var(--settle, 0) * 14px); opacity: calc(1 - var(--settle, 0) * 0.35); }
+
 
 /* ---------- Onboarding (taste) ---------- */
 .mac > .page.layer-taste { z-index: 22; overflow: hidden; }
@@ -511,4 +511,7 @@
    edge, which left a bright sliver of the banner showing above the controls. */
 .mac .toolbar { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(38, 41, 52, calc(0.94 - var(--over, 0) * 0.34)); }
 /* Performance: only the visible screen gets a compositing layer. */
-.mac .content .page { will-change: auto; }
+.mac .content .page, .mac > .page { will-change: opacity, transform; }
+
+/* Only rows near the list's visible part are painted (the list is ~110 rows tall). */
+.mac .artist-list .artist-row { content-visibility: auto; contain-intrinsic-size: auto 44px; }

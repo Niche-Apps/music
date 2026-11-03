@@ -6,6 +6,10 @@ export type Panel = 'none' | 'queue'
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 const glyph = (svg: string, cls = 'glyph') => `<span class="${cls}">${svg}</span>`
+/** Debug: how inactive screens are hidden (?hide=op|vis|off), for WebKit performance tests. */
+const HIDE = new URLSearchParams(location.search).get('hide') ?? 'vis'
+/** Pre-drawing the next screen measured worse in WebKit; kept behind ?underlay for testing. */
+const UNDERLAY = new URLSearchParams(location.search).has('underlay')
 const smooth = (t: number) => { const x = Math.max(0, Math.min(1, t)); return x * x * (3 - 2 * x) }
 const explicitBadge = (t: Track) => (t.explicit ? '<i class="explicit">E</i>' : '')
 
@@ -74,6 +78,24 @@ export class AppWindow {
     this.buildLayers()
   }
 
+  /**
+   * One-time setup that would otherwise force a full layout of the window in the middle of the tour:
+   * build the studio card, share sheet and New Release popover, and measure every screen's scroll
+   * range, the artist rows and the lyric lines. Call once after load, before anyone scrolls.
+   */
+  prepare() {
+    for (const page of this.pages.values()) { page.style.visibility = ''; page.style.contentVisibility = '' }
+    this.setStudio(0.01)
+    this.setStudio(null)
+    this.shareSheet(0)
+    this.newRelease(0)
+    for (const key of ['home', 'album', 'browse', 'create']) this.scrollFraction(0, key)
+    const rows = this.pages.get('artists')!.querySelector<HTMLElement>('.rows')!
+    rows.querySelectorAll<HTMLElement>('.artist-row').forEach((r) => this.rowTops.set(r.dataset.artist!, r.offsetTop))
+    this.lineTops = this.lyricsLines.map((l) => l.offsetTop)
+    this.setArtistFocus(0)
+  }
+
   /** Downloads and decodes the window's images in idle time, so no screen hitches on first sight. */
   warmUp() {
     // Lay out every hidden screen once (still invisible), so content-visibility caches its rendering
@@ -140,50 +162,63 @@ export class AppWindow {
     add('browse', this.browseHTML())
     add('np', this.nowPlayingHTML(), true)
     add('taste', this.tasteHTML(), true)
+    // Fixed stacking: later tour screens sit above earlier ones (the album pushes over artists).
+    const z: Record<string, number> = { home: 1, artists: 2, album: 3, create: 4, browse: 5, np: 20, taste: 22 }
+    for (const [k, page] of this.pages) page.style.zIndex = String(z[k] ?? 1)
     this.lyricsLines = [...this.pages.get('np')!.querySelectorAll<HTMLElement>('.ln')]
     this.setPlaying(this.playing)
+    // WebKit decodes images synchronously while painting unless told otherwise; with ~600 images
+    // in the window that stalled every screen change. Decode off the main thread instead.
+    this.el.querySelectorAll('img').forEach((img) => (img.decoding = 'async'))
   }
 
   /**
    * Shows layers by weight (0…1). Pages stack in tour order; the arriving page fades and settles
    * in over the one leaving, so there's never a dip to an empty window. Now Playing slides up.
    */
-  setLayers(weights: Map<string, number>, order: string[], push = false) {
+  setLayers(weights: Map<string, number>, order: string[], push = false, _underlay?: string) {
+    // Stacking order is fixed (set once in buildLayers): changing z-index made WebKit rebuild its
+    // compositing tree on every screen switch. Screens only change opacity/transform.
     let top = ''
     for (const key of order) if ((weights.get(key) ?? 0) > 0.001) top = key
     for (const [key, page] of this.pages) {
       const w = weights.get(key) ?? 0
       if (w <= 0.001) {
-        if (page.style.visibility !== 'hidden') { page.style.visibility = 'hidden'; page.style.contentVisibility = 'hidden' }
+        if (key === _underlay && UNDERLAY) {
+          // The next step's screen is drawn ahead of time, invisibly (opacity 0.001), so switching
+          // to it doesn't have to paint it on the spot.
+          if (page.style.visibility) page.style.visibility = ''
+          if (page.style.opacity !== '0.001') page.style.opacity = '0.001'
+          if (page.style.transform && !page.style.transform.includes('-300%')) page.style.transform = ''
+          page.style.pointerEvents = 'none'
+          continue
+        }
+        if (HIDE === 'vis') { if (page.style.visibility !== 'hidden') page.style.visibility = 'hidden' }
+        else if (HIDE === 'off') { const t = 'translate3d(0, 0, 0) translateX(-300%)'; if (page.style.transform !== t) { page.style.transform = t; page.style.opacity = '1' } }
+        else if (page.style.opacity !== '0.001') page.style.opacity = '0.001'
+        page.style.pointerEvents = 'none'
         continue
       }
       if (page.style.visibility === 'hidden') { page.style.visibility = ''; page.style.contentVisibility = '' }
-      page.style.zIndex = String(key === 'np' ? 20 : order.indexOf(key) + 1)
+      if (HIDE === 'off' && page.style.transform.includes('-300%')) page.style.transform = ''
+      if (page.style.pointerEvents) page.style.pointerEvents = ''
       if (key === 'taste') {
-        page.style.zIndex = '22'
         page.style.opacity = String(w)
         page.style.transform = w < 0.999 ? `scale(${1 + (1 - w) * 0.05})` : ''
         continue
       }
       if (key === 'np') {
+        page.style.opacity = '1'
         page.style.transform = `translate3d(0, ${(1 - w) * 100}%, 0)`
         continue
       }
       const arriving = key === top && w < 0.999
       if (arriving && push) {
-        // Navigation push: the new page slides in from the right over the old one.
         page.style.opacity = '1'
         page.style.transform = `translate3d(${(1 - w) * 104}%, 0, 0)`
-        page.style.boxShadow = '-20px 0 40px rgba(0,0,0,.25)'
       } else {
-        // Sidebar switch: like the real app, the content is replaced outright (no double
-        // exposure); only the new content settles into place.
-        page.style.opacity = '1'
-        page.style.transform = ''
-        page.style.boxShadow = ''
-        const inner = page.firstElementChild as HTMLElement | null
-        if (inner && !inner.classList.contains('scroller')) inner.style.transform = ''
-        page.style.setProperty('--settle', arriving ? String(1 - w) : '0')
+        if (page.style.opacity !== '1') page.style.opacity = '1'
+        if (page.style.transform) page.style.transform = ''
       }
     }
     const best = [...weights.entries()].sort((a, b) => b[1] - a[1])[0]
@@ -376,8 +411,10 @@ export class AppWindow {
     rows.querySelectorAll('.artist-row').forEach((r) => r.classList.toggle('selected', r === (k < 0.5 ? rowA : rowB)))
     page.querySelectorAll<HTMLElement>('.detail').forEach((d) => {
       const w = d.dataset.artist === ids[i] ? (i === j ? 1 : 1 - k) : d.dataset.artist === ids[j] ? k : 0
-      // All six stay composited (painted once); only opacity changes, so switching artists is free.
-      if (d.style.visibility) { d.style.visibility = ''; d.style.contentVisibility = '' }
+      // Only the artist(s) being shown are painted; the rest are hidden (painting all six made the
+      // artist screen expensive to bring up).
+      const vis = w > 0.001 ? '' : 'hidden'
+      if (d.style.visibility !== vis) d.style.visibility = vis
       d.style.opacity = String(w > 0.001 ? Math.max(0.001, d.dataset.artist === ids[j] && i !== j ? k : 1) : 0.001)
       d.style.zIndex = d.dataset.artist === ids[j] ? '2' : '1'
       const img = d.querySelector<HTMLElement>('.banner img')
@@ -686,7 +723,7 @@ export class AppWindow {
     this.overlay.querySelector<HTMLElement>('.scrim')!.style.opacity = String(v)
     const sheet = this.overlay.querySelector<HTMLElement>('.sheet')!
     sheet.style.transform = `translate3d(0, ${(1 - v) * -110}%, 0)`
-    sheet.style.clipPath = `inset(${(1 - v) * 100}% 0 0 0 round 16px)`
+    sheet.style.opacity = String(Math.min(1, v * 2))
   }
 
   /** A toast at the bottom of the window; k fades and lifts it. */

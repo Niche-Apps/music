@@ -9,6 +9,8 @@ import { ParticleField, lyricShape, recordShape, tasteShape, waveShape } from '.
 
 gsap.registerPlugin(ScrollTrigger)
 
+/** Debug: ?no=cam,cursor,nav,upd,layers,chrome,copy turns subsystems off (performance bisection). */
+const NO = new Set((new URLSearchParams(location.search).get('no') ?? '').split(','))
 const $ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T
 const clamp = (v: number, a = 0, b = 1) => Math.min(b, Math.max(a, v))
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
@@ -23,7 +25,8 @@ async function boot() {
   const cast = chooseCast(lib)
   const player = new Player(lib)
 
-  const lenis = new Lenis({ lerp: 0.16, wheelMultiplier: 1 })
+  const flow = innerWidth < 760
+  const lenis = new Lenis({ lerp: 0.16, wheelMultiplier: 1, smoothWheel: !flow })
   lenis.on('scroll', ScrollTrigger.update)
   gsap.ticker.add((t) => lenis.raf(t * 1000))
   gsap.ticker.lagSmoothing(0)
@@ -35,8 +38,9 @@ async function boot() {
 
   buildWall(lib)
   const win = new AppWindow(lib, cast)
+  ;(window as unknown as { __win: AppWindow }).__win = win // debugging/perf probes
   $('.window-scale').appendChild(win.el)
-  tour(lib, cast, win, player)
+  tour(lib, cast, win, player, flow)
   listen(lib, player)
   how(lib, cast)
   numbers()
@@ -50,6 +54,8 @@ async function boot() {
   if (innerWidth >= 700) setTimeout(() => warmImages(document.querySelectorAll<HTMLImageElement>('.clips img, .final-wall img')), 4000)
 
   // Clicking play in the recreated window plays the real song.
+  // Measure and build everything the tour needs up front (forced layouts mid-scroll caused stalls).
+  requestAnimationFrame(() => win.prepare())
   win.el.addEventListener('click', (e) => {
     const t = (e.target as Element).closest('[data-act="toggle"], .bigplay, .hero-card .play, .btn.red')
     if (!t) return
@@ -135,7 +141,7 @@ const FULL: Rect = [0, 0, 1440, 900]
 /** Scroll (in steps) that a screen change takes, starting right after its click. */
 const SWITCH = 0.07
 
-function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
+function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: boolean) {
   const studioTrack = cast.nowPlaying
   const hero = lib.artist(cast.artists[cast.artists.length - 1])
   const createIdea = 'Late-night jazz from a fictional 1960s Lisbon'
@@ -322,11 +328,32 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
   const wall = $('.wall')
   const stage = $('.stage')
   const viewport = $('.viewport')
+  const tourEl = $('.tour')
+  if (flow) {
+    // Phones: the hero is a normal section, the window is a sticky "scene", and each step's copy
+    // is a normal block that scrolls natively underneath it. The block under the scene drives it.
+    const hero = document.createElement('section')
+    hero.className = 'flow-hero'
+    hero.append(wall, $('.wall-fade'), heroCopy)
+    tourEl.before(hero)
+    tourEl.classList.add('flow')
+    stage.after(copyHost)
+    copies.forEach((c, i) => c.style.setProperty('--len', String(steps[i].len ?? 1)))
+    if (!NO.has('wall')) new IntersectionObserver(([e]) => wall.classList.toggle('off', !e.isIntersecting)).observe(hero)
+    // Re-layout if the device rotates across the phone breakpoint.
+    addEventListener('resize', () => { if ((innerWidth < 760) !== flow) location.reload() })
+  }
 
   // Layout: "wide" shows the whole window beside the copy; "compact" (narrow, tall or phone
   // screens) gives the window the top of the screen and tours it with a zooming camera.
   const layout = () => {
     const vw = innerWidth, vh = innerHeight
+    if (flow) {
+      const sceneH = Math.round(Math.min(vh * 0.46, vw * 0.95))
+      tourEl.style.setProperty('--scene-h', `${sceneH}px`)
+      const area = { x: 10, y: 8, w: vw - 20, h: sceneH - 18 }
+      return { vw, vh, compact: true, area, heroScale: 1, heroY: 0, minZoom: 0, maxZoom: 1, stageW: vw, stageH: sceneH, sceneH }
+    }
     const compact = vw < 1100 || vw / vh < 1.25
     stage.classList.toggle('compact', compact)
     const area = compact
@@ -339,7 +366,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
     const top = Math.min(copyBottom + 56, vh - 120)
     const heroY = top + (900 * heroScale) / 2 - vh / 2
     const minZoom = compact ? Math.min(0.55, area.w / 700) : 0
-    return { vw, vh, compact, area, heroScale, heroY, minZoom, maxZoom: compact ? (vw < 700 ? 1.05 : 1.2) : 1 }
+    return { vw, vh, compact, area, heroScale, heroY, minZoom, maxZoom: compact ? (vw < 700 ? 1.05 : 1.2) : 1, stageW: vw, stageH: vh, sceneH: 0 }
   }
   let L = layout()
   addEventListener('resize', () => { L = layout(); ScrollTrigger.refresh() })
@@ -350,7 +377,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
     const vwPts = area.w / s, vhPts = area.h / s
     const cx = vwPts < r[2] ? r[0] + vwPts / 2 : r[0] + r[2] / 2
     const cy = vhPts < r[3] ? r[1] + vhPts / 2 : r[1] + r[3] / 2
-    return { x: area.x + area.w / 2 - L.vw / 2 - (cx - 720) * s, y: area.y + area.h / 2 - L.vh / 2 - (cy - 450) * s, s }
+    return { x: area.x + area.w / 2 - L.stageW / 2 - (cx - 720) * s, y: area.y + area.h / 2 - L.stageH / 2 - (cy - 450) * s, s }
   }
   const lerpRect = (a: Rect, b: Rect, t: number): Rect => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t), lerp(a[3], b[3], t)]
   const at = <T extends { t: number }>(keys: T[], t: number): [T, T, number] => {
@@ -362,10 +389,9 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
   // Compact screens: the camera frames whatever the cursor is working on (like a screen recording
   // that zooms to the action); steps without a cursor use their own framing.
   function viewPts() {
-    const z = L.vw < 700 ? Math.max(L.minZoom, L.area.w / 620) : Math.min(1, L.area.w / 980, L.area.h / 640)
+    const z = flow ? Math.min(L.area.w / 560, L.area.h / 380) : L.vw < 700 ? Math.max(L.minZoom, L.area.w / 620) : Math.min(1, L.area.w / 980, L.area.h / 640)
     return { w: L.area.w / z, h: L.area.h / z }
   }
-  let lastAim: { x: number; y: number } | null = null
   const followRect = (p: { x: number; y: number }): Rect => {
     const v = viewPts()
     const x = clamp(p.x - v.w * 0.5, 0, Math.max(0, 1440 - v.w))
@@ -375,8 +401,9 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
   const focusAt = (i: number, t: number): Rect => {
     if (!L.compact) return FULL
     if (steps[i].cursor?.some((c) => c.sel)) {
-      const p = cursorPoint(i + t) ?? lastAim
-      if (p) { lastAim = p; return followRect(p) }
+      // Follow the cursor while it's on screen in this step; otherwise use the step's own framing.
+      const p = cursorPoint(i + t)
+      if (p) return followRect(p)
     }
     const f = steps[i].focus
     const [a, b, k] = at(f, t)
@@ -407,17 +434,33 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
   }
 
   let lastY = NaN
-  const apply = (y: number, force = false) => {
+  // Flow mode: the camera eases toward its target instead of jumping with the scroll.
+  const camNow = { x: 0, y: 0, s: 0, init: false }
+  let camTarget = { x: 0, y: 0, s: 1 }
+  let camRaf = 0
+  let camLast = 0
+  const camTick = (t: number) => {
+    const dt = camLast ? Math.min(64, t - camLast) : 16
+    camLast = t
+    const k = 1 - Math.exp(-dt / 140)
+    camNow.x += (camTarget.x - camNow.x) * k
+    camNow.y += (camTarget.y - camNow.y) * k
+    wrap.style.transform = `translate3d(${camNow.x.toFixed(1)}px, ${camNow.y.toFixed(1)}px, 0) scale(${camTarget.s.toFixed(4)})`
+    if (Math.abs(camTarget.x - camNow.x) + Math.abs(camTarget.y - camNow.y) > 0.3) camRaf = requestAnimationFrame(camTick)
+    else { camRaf = 0; camLast = 0 }
+  }
+  const apply = (y: number, force = false, flowS?: number) => {
     if (!force && Math.abs(y - lastY) < 1e-5) return
     lastY = y
-    const s = toStep(y - 1) // fractional step index (negative: still in the hero)
+    const s = flowS ?? toStep(y - 1) // fractional step index (negative: still in the hero)
+    ;(window as unknown as { __tourS: number }).__tourS = s
     const idx = Math.max(0, Math.min(steps.length - 1, Math.floor(s)))
     const cur = steps[idx]
     const prev = steps[idx - 1]
     const kIn = smooth(clamp((s - idx) / SWITCH))
 
     // In-step state for the neighbors first, then the current step wins.
-    for (const j of [idx - 1, idx + 1, idx]) {
+    if (!NO.has('upd')) for (const j of [idx - 1, idx + 1, idx]) {
       const st = steps[j]
       if (st?.update && (j === idx || Math.abs(s - j - 0.5) < 0.75)) st.update(j === idx ? clamp(s - j) : j < idx ? 1 : 0)
     }
@@ -432,30 +475,42 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
       else if (cur.page === 'np') { weights.set(prev.page, 1); weights.set('np', kIn) }
       else { weights.set(prev.page, 1); weights.set(cur.page, kIn); order = [prev.page, cur.page]; push = cur.arrive === 'push' }
     } else weights.set(cur.page, 1)
-    win.setLayers(weights, order, push)
+    const nextPage = steps[idx + 1]?.page
+    if (!NO.has('layers')) win.setLayers(weights, order, push, nextPage && nextPage !== 'np' && nextPage !== 'taste' && !weights.has(nextPage) ? nextPage : undefined)
     const navK = prev ? smooth(clamp((s - idx + 0.05) / 0.05)) : 1
-    win.setNav(prev && prev.nav !== cur.nav ? new Map([[prev.nav, 1 - navK], [cur.nav, navK]]) : new Map([[cur.nav, 1]]))
+    if (!NO.has('nav')) win.setNav(prev && prev.nav !== cur.nav ? new Map([[prev.nav, 1 - navK], [cur.nav, navK]]) : new Map([[cur.nav, 1]]))
     const backOf = (st?: Step) => (st?.page === 'album' && st.arrive === 'push' ? 1 : 0)
     const overOf = (st?: Step) => (st?.page === 'artists' ? 1 : 0)
-    win.setChrome(prev ? lerp(backOf(prev), backOf(cur), kIn) : backOf(cur), prev ? lerp(overOf(prev), overOf(cur), kIn) : overOf(cur))
+    if (!NO.has('chrome')) win.setChrome(prev ? lerp(backOf(prev), backOf(cur), kIn) : backOf(cur), prev ? lerp(overOf(prev), overOf(cur), kIn) : overOf(cur))
 
     // Camera: from the hero pose into the tour, then gliding between each step's focus points.
-    const intro = ease(clamp(y / 0.95))
+    const intro = flow ? 1 : ease(clamp(y / 0.95))
     let rect = focusAt(idx, clamp(s - idx))
     if (prev && s - idx < 0.15) rect = lerpRect(focusAt(idx - 1, 1), rect, ease(clamp((s - idx) / 0.15)))
     const cam = camera(rect)
     const end = total + 1
-    const out = ease(clamp((y - (end - 0.75)) / 0.5))
+    const lastT = clamp(s - (steps.length - 1))
+    const out = flow ? ease(clamp((lastT - 0.15) / 0.35)) : ease(clamp((y - (end - 0.75)) / 0.5))
     const tx = lerp(0, cam.x, intro) - out * (L.compact ? 0 : L.vw * 0.2)
     const ty = lerp(L.heroY, cam.y, intro) + out * 30
     const sc = lerp(L.heroScale, cam.s, intro) * (1 - out * 0.22)
     const rx = lerp(24, 0, ease(clamp(y / 0.8)))
     const ry = out * (L.compact ? 0 : 14)
+    if (flow) {
+      camTarget = { x: cam.x, y: cam.y + out * 30, s: cam.s }
+      if (!camNow.init) { camNow.x = cam.x; camNow.y = cam.y; camNow.init = true }
+      if (NO.has('cam')) wrap.style.transform = `translate3d(${cam.x.toFixed(1)}px, ${cam.y.toFixed(1)}px, 0) scale(${cam.s.toFixed(4)})`
+      else if (!camRaf) camRaf = requestAnimationFrame(camTick)
+      // No fade on the window itself (fading a parent of many GPU layers is expensive in WebKit);
+      // a scrim over the scene dims it instead.
+      stage.style.setProperty('--dim', out.toFixed(3))
+    } else
     wrap.style.transform = rx > 0.01 || ry > 0.01
       ? `translate3d(${tx}px, ${ty}px, 0) scale(${sc}) rotateX(${rx}deg) rotateY(${ry}deg)`
       : `translate3d(${tx.toFixed(1)}px, ${ty.toFixed(1)}px, 0) scale(${sc.toFixed(4)})`
-    wrap.style.opacity = String(1 - out * (L.compact ? 0.85 : 0.7))
+    if (!flow) wrap.style.opacity = String(1 - out * (L.compact ? 0.85 : 0.7))
 
+    if (!flow) {
     heroCopy.style.transform = `translate3d(0, ${-y * L.vh * 0.45}px, 0)`
     heroCopy.style.opacity = String(1 - clamp(y / 0.45))
     heroCopy.style.pointerEvents = y > 0.3 ? 'none' : ''
@@ -467,9 +522,13 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
       const a = L.area, k = intro * (1 - out)
       viewport.style.clipPath = `inset(${lerp(0, a.y, k)}px ${lerp(0, L.vw - a.x - a.w, k)}px ${lerp(0, L.vh - a.y - a.h, k)}px ${lerp(0, a.x, k)}px round ${lerp(0, 18, k)}px)`
     } else viewport.style.clipPath = ''
-    updateCursor(s)
+    }
+    if (!NO.has('cursor')) updateCursor(s)
 
-    copies.forEach((c, i) => {
+    if (flow) {
+      const active = Math.max(0, Math.min(steps.length - 1, Math.floor(s)))
+      if (!NO.has('copy')) copies.forEach((c, i) => c.classList.toggle('active', i === active))
+    } else copies.forEach((c, i) => {
       let d = s - i
       if (i === steps.length - 1) d = Math.min(d, 0.5)
       if (L.compact) {
@@ -486,26 +545,67 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
       c.style.transform = `translate3d(0, calc(-50% + ${pos * L.vh}px), 0)`
       c.style.pointerEvents = vis > 0.5 ? 'auto' : 'none'
     })
-    progress.style.opacity = String(clamp((y - 0.9) / 0.2) * (1 - clamp((y - end + 0.1) / 0.3)))
+    progress.style.opacity = flow ? '1' : String(clamp((y - 0.9) / 0.2) * (1 - clamp((y - end + 0.1) / 0.3)))
     bars.forEach((b, i) => (b.style.transform = `scaleX(${clamp(s - i)})`))
 
     menubar.style.opacity = String(out)
-    const m1 = ease(clamp((y - (end - 0.55)) / 0.4))
-    const m2 = ease(clamp((y - (end - 0.45)) / 0.4))
+    const m1 = flow ? ease(clamp((lastT - 0.3) / 0.3)) : ease(clamp((y - (end - 0.55)) / 0.4))
+    const m2 = flow ? ease(clamp((lastT - 0.4) / 0.3)) : ease(clamp((y - (end - 0.45)) / 0.4))
     const phone = L.vw < 700
-    const miniScale = L.compact ? Math.min(0.9, (L.vh * 0.42) / 340, (L.vw * 0.5) / 340) : Math.min(1.1, L.vh / 760)
+    const miniScale = flow ? Math.min((L.sceneH - 70) / 340, (L.vw * 0.5 - 16) / 340) : L.compact ? Math.min(0.9, (L.vh * 0.42) / 340, (L.vw * 0.5) / 340) : Math.min(1.1, L.vh / 760)
     mini.style.opacity = String(m1)
-    mini.style.left = `${L.compact ? L.vw * 0.05 : L.vw * 0.5}px`
-    mini.style.top = `${L.compact ? L.vh * (phone ? 0.2 : 0.16) : L.vh * 0.36}px`
+    mini.style.left = `${flow ? 16 : L.compact ? L.vw * 0.05 : L.vw * 0.5}px`
+    mini.style.top = `${flow ? 40 : L.compact ? L.vh * (phone ? 0.2 : 0.16) : L.vh * 0.36}px`
     mini.style.transform = `translate3d(0, ${(1 - m1) * 60}px, 0) scale(${miniScale * (0.9 + m1 * 0.1)}) rotate(${(1 - m1) * -4}deg)`
     mini.style.transformOrigin = '0 0'
     menu.style.opacity = String(m2)
-    menu.style.right = `${L.compact ? L.vw * 0.04 : L.vw * 0.06}px`
-    menu.style.top = '96px'
-    menu.style.transform = `translate3d(0, ${(1 - m2) * -16}px, 0) scale(${(L.compact ? Math.min(0.85, (L.vw * 0.5) / 300) : Math.min(1.15, L.vh / 760)) * (0.96 + m2 * 0.04)})`
+    menu.style.right = `${flow ? 18 : L.compact ? L.vw * 0.04 : L.vw * 0.06}px`
+    menu.style.top = flow ? '38px' : '96px'
+    menu.style.transform = `translate3d(0, ${(1 - m2) * -16}px, 0) scale(${(flow ? Math.min((L.vw * 0.5 - 22) / 300, (L.sceneH - 60) / 400) : L.compact ? Math.min(0.85, (L.vw * 0.5) / 300) : Math.min(1.15, L.vh / 760)) * (0.96 + m2 * 0.04)})`
     menu.style.transformOrigin = '100% 0'
   }
 
+  if (flow) {
+    // Cached block positions → step progress, from native scroll only (no layout reads per frame).
+    let tops: number[] = [], heights: number[] = []
+    let tourTop = 0, tourBottom = 0
+    const measure = () => {
+      tops = copies.map((c) => c.getBoundingClientRect().top + scrollY)
+      heights = copies.map((c) => c.offsetHeight)
+      const r = tourEl.getBoundingClientRect()
+      tourTop = r.top + scrollY
+      tourBottom = r.bottom + scrollY
+    }
+    // The scene is position:fixed (toggling sticky re-parents its whole GPU layer tree in WebKit,
+    // a ~110 ms stall). It follows the page in at the tour's start and out at its end by transform.
+    let sceneY = NaN
+    const placeScene = () => {
+      const natural = tourTop - scrollY
+      const y = Math.min(Math.max(56, natural), tourBottom - scrollY - L.sceneH)
+      if (Math.abs(y - sceneY) < 0.25) return
+      sceneY = y
+      stage.style.transform = `translate3d(0, ${(y - 56).toFixed(1)}px, 0)`
+      const off = y > innerHeight || y < -L.sceneH
+      if (stage.classList.contains('away') !== off) stage.classList.toggle('away', off)
+    }
+    const flowS = () => {
+      const line = scrollY + 56 + L.sceneH + 36 // just under the scene
+      if (line < tops[0]) return -Math.min(1, (tops[0] - line) / innerHeight)
+      for (let i = copies.length - 1; i >= 0; i--) if (line >= tops[i]) return i + clamp((line - tops[i]) / heights[i])
+      return 0
+    }
+    let raf = 0
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(() => {
+      raf = 0
+      placeScene()
+      apply(scrollY / innerHeight, false, Math.max(0, flowS()))
+    }) }
+    addEventListener('scroll', onScroll, { passive: true })
+    addEventListener('resize', () => { L = layout(); measure(); sceneY = NaN; placeScene(); apply(scrollY / innerHeight, true, Math.max(0, flowS())) })
+    requestAnimationFrame(() => { measure(); placeScene(); apply(scrollY / innerHeight, true, Math.max(0, flowS())) })
+    addEventListener('load', () => { measure(); sceneY = NaN; placeScene() })
+    return
+  }
   const span = (total * 100 + 195 - 100) / 100
   ScrollTrigger.create({
     trigger: '.tour', start: 'top top', end: 'bottom bottom',
@@ -559,6 +659,7 @@ function listen(lib: Library, player: Player) {
     const t = lib.trackAlbum.get(id)!.tracks.find((x) => x.id === id)!
     host.appendChild(clipCard(lib, t, player, 'reveal'))
   }
+  if (NO.has('reveal')) { gsap.set('.clip.reveal', { opacity: 1, y: 0 }); return }
   ScrollTrigger.batch('.clip.reveal', {
     start: 'top 92%',
     onEnter: (els) => gsap.to(els, { opacity: 1, y: 0, duration: 1, ease: 'expo.out', stagger: 0.06 }),
