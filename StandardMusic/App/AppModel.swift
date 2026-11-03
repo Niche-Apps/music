@@ -63,6 +63,8 @@ final class AppModel {
     private(set) var modelState: ModelState = .unknown
     private(set) var usage = ChatGPTUsage()
     private(set) var taste = TasteProfile()
+    /// The "while you wait" song for the first library build.
+    private(set) var opener: OpenerState?
     var signInError: String?
     var isSigningIn = false
 
@@ -153,6 +155,7 @@ final class AppModel {
                 let grew = status.artistsReady != self.buildStatus.artistsReady
                 self.buildStatus = status
                 if grew { self.recording.kick() }
+                self.refreshOpener()
             }
         }
         await services.client.observeUsage { usage in
@@ -160,6 +163,7 @@ final class AppModel {
         }
         await services.engine.setIdleTimeout(.seconds(60 * max(1, UserDefaults.standard.integer(forKey: Pref.engineIdleMinutes))))
         refreshModelState()
+        refreshOpener()
         recording.kick()
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
@@ -342,6 +346,22 @@ final class AppModel {
         libraryEntered = true
         navigationRestored = true
         withAnimation(.smooth(duration: 0.8)) { phase = .library }
+    }
+
+    // MARK: While you wait
+
+    /// Picks up the opener song once its track list is written and sends it to the front of the
+    /// studio. Runs on every builder update (a cheap read) until the song is recorded or has failed;
+    /// once the listener is in the library it's an ordinary song again.
+    func refreshOpener() {
+        guard let state = try? services.db.resolveOpener() else { return }
+        if state != opener { opener = state }
+        guard let id = state.trackID,
+            let track = try? services.db.reader.read({ try Track.fetchOne($0, key: id) }),
+            track.status == .pending || track.status == .generating,
+            !recording.hasFailed(id), !libraryEntered
+        else { return }
+        if recording.active?.trackID != id, recording.requested.first != id { recording.prioritize(id) }
     }
 
     // MARK: Creating more music

@@ -442,8 +442,13 @@ public actor LibraryBuilder {
                 .order(Column("createdAt")).fetchAll(db)
         }
         // Core first so the listener's favourites land early.
-        let ordered = pending.filter { $0.tier == .core }.prefix(16) + pending.filter { a in
+        var ordered = Array(pending.filter { $0.tier == .core }.prefix(16) + pending.filter { a in
             !pending.filter { $0.tier == .core }.prefix(16).contains(where: { $0.id == a.id })
+        })
+        // The "while you wait" artist goes first of all.
+        let openerID = batch.kind == .initialLibrary ? (try? chooseOpener(batch: batch)) ?? nil : nil
+        if let openerID, let i = ordered.firstIndex(where: { $0.id == openerID }) {
+            ordered.insert(ordered.remove(at: i), at: 0)
         }
         let ticker = Task { [weak self] in
             while !Task.isCancelled {
@@ -455,7 +460,7 @@ public actor LibraryBuilder {
         try await withThrowingTaskGroup(of: Void.self) { group in
             for artist in ordered {
                 group.addTask {
-                    await self.artistLimit.wait()
+                    await self.artistLimit.wait(first: artist.id == openerID)
                     defer { Task { await self.artistLimit.signal() } }
                     var attempt = 0
                     while true {
@@ -484,6 +489,28 @@ public actor LibraryBuilder {
             }
             try await group.waitForAll()
         }
+    }
+
+    /// Picks the artist for the first song the listener hears (once per library; a relaunch keeps it).
+    /// Returns the opener artist's id when it still needs writing in this batch.
+    private func chooseOpener(batch: GenerationBatch) throws -> ID? {
+        if let state = db.openerState {
+            // Already chosen (relaunch): keep it unless that artist is gone or couldn't be written.
+            if let id = state.artistID,
+                let artist = try db.reader.read({ try Artist.fetchOne($0, key: id) }), artist.status != .failed
+            {
+                return artist.id
+            }
+            if state.trackID != nil { return nil }
+        }
+        guard let genre = Opener.favoriteGenre(profile()) else { return nil }
+        let roster = try db.reader.read { db in
+            try Artist.filter(Column("batchID") == batch.id).order(Column("createdAt")).fetchAll(db)
+        }
+        guard let artist = Opener.pickArtist(roster, genre: genre) else { return nil }
+        try db.setOpenerState(OpenerState(genre: genre, artistID: artist.id))
+        buildLog.info("Opener: \(artist.name) for \(genre)")
+        return artist.id
     }
 
     private var waitingUntil: Date?
@@ -522,12 +549,23 @@ public actor LibraryBuilder {
     public func complete(artistID: ID) async throws {
         guard var artist = try await db.reader.read({ try Artist.fetchOne($0, key: artistID) }) else { return }
         let profile = profile()
+        // The opener artist's story, lead release and its cover jump the line: the listener hears
+        // that song while everything else is written.
+        let opener = db.openerState.flatMap { $0.artistID == artistID && $0.trackID == nil ? $0 : nil }
         if artist.status == .planned || artist.status == .failed && artist.soul.isEmpty {
             setActivity(artistID, "Writing \(artist.name)'s story")
-            artist = try await writeArtist(artist, profile: profile)
+            artist = try await writeArtist(artist, profile: profile, urgent: opener != nil)
         }
         let albums = try await db.reader.read { db in
             try Album.filter(Column("artistID") == artistID).order(Column("releaseYear")).fetchAll(db)
+        }
+        var leadID: ID?
+        if var state = opener {
+            leadID = albums.first { $0.id == state.albumID }?.id ?? Opener.leadAlbum(albums)?.id
+            if state.albumID != leadID {
+                state.albumID = leadID
+                try? db.setOpenerState(state)
+            }
         }
         let snapshot = artist
         try await withThrowingTaskGroup(of: Void.self) { group in
@@ -535,12 +573,13 @@ public actor LibraryBuilder {
                 if snapshot.imagePath == nil { try await self.paintPortrait(snapshot) }
             }
             for album in albums {
+                let urgent = album.id == leadID
                 group.addTask {
                     var album = album
                     if album.status == .planned || album.notes.isEmpty {
-                        album = try await self.writeAlbum(album, artist: snapshot)
+                        album = try await self.writeAlbum(album, artist: snapshot, urgent: urgent)
                     }
-                    if album.coverPath == nil { try await self.paintCover(album, artist: snapshot) }
+                    if album.coverPath == nil { try await self.paintCover(album, artist: snapshot, urgent: urgent) }
                     _ = try self.db.modifyAlbum(album.id) { $0.status = .ready }
                 }
             }
@@ -569,7 +608,7 @@ public actor LibraryBuilder {
         var albums: [AlbumOutline]
     }
 
-    private func writeArtist(_ artist: Artist, profile: TasteProfile) async throws -> Artist {
+    private func writeArtist(_ artist: Artist, profile: TasteProfile, urgent: Bool = false) async throws -> Artist {
         let usedTitles = try await db.reader.read { db in
             try String.fetchAll(db, sql: "SELECT title FROM album ORDER BY RANDOM() LIMIT 60")
         }
@@ -620,7 +659,7 @@ public actor LibraryBuilder {
             Visual approach for each release, in order:
             \(coverApproaches.enumerated().map { "  \($0.offset + 1). \($0.element)" }.joined(separator: "\n"))
             """
-        let p = try await textLimit.run {
+        let p = try await textLimit.run(first: urgent) {
             try await self.client.json(
                 ArtistPayload.self, schemaName: "artist_dossier", schema: schema,
                 instructions: "You are a music historian writing the canonical record of an alternate-universe artist. Be specific, sensory and consistent.",
@@ -677,7 +716,7 @@ public actor LibraryBuilder {
         var tracks: [Song]
     }
 
-    private func writeAlbum(_ album: Album, artist: Artist) async throws -> Album {
+    private func writeAlbum(_ album: Album, artist: Artist, urgent: Bool = false) async throws -> Album {
         setActivity(artist.id, "Writing songs for \(album.title)")
         let siblings = try await db.reader.read { db in
             try Album.filter(Column("artistID") == artist.id).order(Column("releaseYear")).fetchAll(db)
@@ -715,7 +754,7 @@ public actor LibraryBuilder {
               - styleTags: a comma-separated tag line for a music generation model, 9–18 words, in this order: language (usually "English"), genre/subgenre, era/production feel, 3–5 key instruments, mood, tempo word. Never describe the singer — the artist's fixed voice is added automatically. Must reflect this specific song, and must sound like the artist's genre: name the genre and use its defining instruments and production (a ballad by a rock band is still a rock ballad). Avoid vague texture words like "tactile", "room tone", "felt", "intimate" unless the genre really calls for them.
               - bpm: realistic tempo.
             """
-        let p = try await textLimit.run {
+        let p = try await textLimit.run(first: urgent) {
             try await self.client.json(
                 AlbumPayload.self, schemaName: "album_tracks", schema: schema,
                 instructions: "You are a producer and A&R writing the definitive notes for a record. Be specific and musical.",
@@ -766,14 +805,14 @@ public actor LibraryBuilder {
         }
     }
 
-    private func paintCover(_ album: Album, artist: Artist) async throws {
+    private func paintCover(_ album: Album, artist: Artist, urgent: Bool = false) async throws {
         setActivity(artist.id, "Designing the cover of \(album.title)")
         let prompt = """
             Square album cover art for "\(album.title)" by \(artist.name), a \(album.releaseYear) \(album.primaryGenre) \(album.kind.label.lowercased()).
             Art direction: \(album.coverPrompt)
             It must look like a real, professionally designed \(album.primaryGenre) release from \(album.releaseYear), following the art direction's medium faithfully (a photo stays a photo, a painting stays a painting). Avoid aged-paper textures, archival documents and muted still lifes unless the art direction asks for them. If typography is used, spell "\(artist.name)" and "\(album.title)" exactly. No watermarks, no parental advisory labels, no real brands.
             """
-        let data = try await imageLimit.run { try await self.client.image(prompt: prompt) }
+        let data = try await imageLimit.run(first: urgent) { try await self.client.image(prompt: prompt) }
         let path = try artwork.save(data, kind: .album, id: album.id)
         let palette = ArtworkStore.palette(from: data)
         _ = try db.modifyAlbum(album.id) {

@@ -18,6 +18,9 @@ struct BuildingView: View {
     private static let readyThreshold = 6
 
     @State private var recorded: [Track] = []
+    /// The "while you wait" song and whether this is the listener's first library (it only exists for that one).
+    @State private var opener = OpenerSong.none
+    @State private var firstLibrary = false
 
     private struct Snapshot: Equatable, Sendable {
         var artists: [Artist]
@@ -53,7 +56,7 @@ struct BuildingView: View {
                 SpotlightCard(
                     content: spotlightContent, albums: spotlightAlbums, taste: model.taste, activity: status.activity
                 ) {
-                    if let song = spotlightSong { OpenerButton(track: song) }
+                    if let song = spotlightSong, !(showsOpener && song.id == opener.track?.id) { OpenerButton(track: song) }
                 }
                 Spacer(minLength: 12)
                 VStack(spacing: 14) {
@@ -83,6 +86,16 @@ struct BuildingView: View {
         } update: { snapshot in
             receive(snapshot)
         }
+        .observing(model.services.db, id: "opener") { db in
+            let song = try OpenerSong.fetch(db)
+            let others = try GenerationBatch.filter(Column("kind") != BatchKind.initialLibrary.rawValue).fetchCount(db)
+            return OpenerObservation(song: song, firstLibrary: others == 0)
+        } update: { value in
+            withAnimation(.smooth(duration: 0.6)) {
+                opener = value.song
+                firstLibrary = value.firstLibrary
+            }
+        }
         .task(id: "\(portraitOrder.count)-\(artists.count)") {
             // Between arrivals, rotate the spotlight: through portraits once there are some, otherwise through
             // the freshly cast roster so the names themselves are the show.
@@ -97,6 +110,26 @@ struct BuildingView: View {
                 withAnimation(.smooth(duration: 0.7)) { spotlight = pool[next] }
             }
         }
+    }
+
+    private struct OpenerObservation: Equatable, Sendable {
+        var song: OpenerSong
+        var firstLibrary: Bool
+    }
+
+    private var openerStage: WhileYouWaitCard.Stage {
+        let installed = if case .installed = model.modelState { true } else { false }
+        return WhileYouWaitCard.stage(for: opener, recording: model.recording, modelInstalled: installed)
+    }
+
+    /// The "while you wait" player: from the moment the build starts until the song is recorded and
+    /// beyond. If it couldn't be made, the studio line (and the spotlight's play button) take over.
+    private var showsOpener: Bool {
+        guard openerStage != .failed, status.phase != .failed else { return false }
+        if opener.state?.artistID != nil { return true }
+        // Before the roster lands: a placeholder for the song that's on its way.
+        return opener.state == nil && firstLibrary && recorded.isEmpty
+            && (status.phase == .planning || status.phase == .idle || status.phase == .writing && artists.isEmpty)
     }
 
     private var status: BuildStatus { model.buildStatus }
@@ -184,7 +217,16 @@ struct BuildingView: View {
                 progress
             }
             HStack(alignment: .center) {
-                StudioLine(recordedCount: recorded.count)
+                if showsOpener {
+                    VStack(alignment: .leading, spacing: 10) {
+                        WhileYouWaitCard(song: opener, genre: opener.state?.genre ?? Opener.favoriteGenre(model.taste))
+                        // Once the opener is in hand, the studio line goes back to reporting the rest.
+                        if openerStage == .ready { StudioLine(recordedCount: recorded.count) }
+                    }
+                    .transition(.blurReplace)
+                } else {
+                    StudioLine(recordedCount: recorded.count)
+                }
                 Spacer()
                 listenButton
             }

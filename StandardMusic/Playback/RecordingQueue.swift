@@ -99,6 +99,31 @@ final class RecordingQueue {
         pump()
     }
 
+    /// Records this song before anything else the listener hasn't asked for (the "while you wait"
+    /// song). Background work in progress makes way unless it's nearly done; songs the player is
+    /// waiting on still come first. Respects Stop Recording.
+    func prioritize(_ id: ID) {
+        guard failures[id] == nil else { return }
+        if requested.first != id {
+            requested.removeAll { $0 == id }
+            requested.insert(id, at: 0)
+        }
+        if let active, active.trackID != id, !playbackDemand.contains(active.trackID),
+            !requested.contains(active.trackID), active.fraction < 0.6
+        {
+            recordLog.info("Making way for the opener: pausing \(active.title)")
+            cancelledByPreemption.insert(active.trackID)
+            switch active.phase {
+            case .recording: Task { await services.engine.cancel(jobID: active.trackID) }
+            case .writingLyrics, .waitingForModel: worker?.cancel()
+            }
+        }
+        pump()
+    }
+
+    /// Whether a song failed to record this session.
+    func hasFailed(_ id: ID) -> Bool { failures[id] != nil }
+
     /// Stops the studio: cancels the song being recorded (it goes back to "not recorded", nothing
     /// is lost) and drops everything queued behind it.
     func stopAll() {

@@ -6,6 +6,7 @@ import StandardKit
 // Developer harness: exercises the ChatGPT-backed builder against a scratch library.
 //   sm-dev build <dir> <count> [prompt]
 //   sm-dev lyrics <dir> <trackID>
+//   sm-dev models <dir>
 //   sm-dev image <dir> <out.jpg> <prompt>
 
 let args = CommandLine.arguments
@@ -19,6 +20,8 @@ let catalogURL = URL(fileURLWithPath: "/Users/justinschroeder/Projects/StandardM
 let catalog = FileManager.default.fileExists(atPath: catalogURL.path) ? try? Catalog(url: catalogURL) : nil
 
 switch args[1] {
+case "models":
+    for m in try await client.availableModels() { print(m.id, "|", m.displayName, "|", m.description) }
 case "build":
     var profile = TasteProfile()
     profile.selectedGenres = ["Indie", "Electronic"]

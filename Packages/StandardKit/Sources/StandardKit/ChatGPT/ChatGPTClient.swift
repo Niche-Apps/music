@@ -61,7 +61,7 @@ public struct ChatGPTModel: Sendable, Hashable, Identifiable {
 /// Responses API client for the ChatGPT (Codex) backend, authenticated with the user's subscription.
 public actor ChatGPTClient {
     static let base = URL(string: "https://chatgpt.com/backend-api/codex")!
-    public static let defaultWritingModel = "gpt-6.1-sol"
+    public static let defaultWritingModel = "gpt-6.1-terra"
     public static let defaultFastModel = "gpt-6-luna"
 
     private let auth: ChatGPTAuth
