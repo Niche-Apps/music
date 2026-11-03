@@ -87,7 +87,7 @@ code { font-family: var(--mono); font-size: 0.92em; background: rgba(255,255,255
 .tour-progress i { width: 22px; height: 3px; border-radius: 2px; background: rgba(255,255,255,.14); overflow: hidden; position: relative; }
 .tour-progress i b { position: absolute; inset: 0; background: var(--pink); transform-origin: left; transform: scaleX(0); }
 .extras { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
-.extras .menubar { position: absolute; top: 60px; left: 0; right: 0; height: 30px; background: rgba(20,21,26,.6); backdrop-filter: blur(20px); display: flex; align-items: center; justify-content: flex-end; gap: 18px; padding: 0 18px; font-size: 13px; font-weight: 500; opacity: 0; }
+.extras .menubar { position: absolute; top: 60px; left: 0; right: 0; height: 30px; background: rgba(20,21,26,.92); display: flex; align-items: center; justify-content: flex-end; gap: 18px; padding: 0 18px; font-size: 13px; font-weight: 500; opacity: 0; }
 .extras .menubar .mb-icon { width: 18px; height: 18px; color: #fff; }
 .extras .menubar .mb-icon svg { width: 100%; height: 100%; }
 .extras .float { position: absolute; transform-origin: 50% 0; opacity: 0; }
@@ -98,7 +98,7 @@ section.listen, section.open { padding: clamp(80px, 14vh, 160px) max(20px, 5vw);
 .section-head h2, .open h2 { font-family: var(--display); font-size: clamp(34px, 4.4vw, 68px); line-height: 1.02; letter-spacing: -0.04em; margin: 16px 0 0; font-weight: 800; }
 .clips { margin-top: 56px; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 18px; }
 .clip { position: relative; border-radius: 20px; padding: 14px; background: linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025)); box-shadow: inset 0 0 0 1px rgba(255,255,255,.07); display: grid; grid-template-columns: 96px 1fr; gap: 16px; cursor: pointer; overflow: hidden; transition: transform .35s cubic-bezier(.2,.8,.2,1), box-shadow .35s; isolation: isolate; }
-.clip::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--tint, #333); opacity: 0; transition: opacity .5s; filter: blur(40px); }
+.clip::before { content: ''; position: absolute; inset: -30%; z-index: -1; background: radial-gradient(closest-side, var(--tint, #333), transparent); opacity: 0; transition: opacity .5s; }
 .clip:hover { transform: translateY(-3px); box-shadow: inset 0 0 0 1px rgba(255,255,255,.14), 0 20px 50px rgba(0,0,0,.4); }
 .clip.on::before { opacity: .35; }
 .clip.on { box-shadow: inset 0 0 0 1px rgba(255,255,255,.2), 0 20px 60px rgba(0,0,0,.45); }

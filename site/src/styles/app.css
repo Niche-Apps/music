@@ -98,7 +98,7 @@
   position: absolute; top: 0; left: 230px; right: 0; height: 52px; z-index: 4;
   border-bottom: 1px solid var(--hairline);
   background: rgba(41, 45, 56, 0.72);
-  -webkit-}
+  }
 .mac .toolbar.over-image { background: rgba(30, 32, 40, 0.28); border-bottom-color: rgba(255,255,255,.06); }
 .mac .capsule {
   position: absolute; top: 8px; height: 36px; border-radius: 12px; display: flex; align-items: center;
@@ -270,7 +270,7 @@
 
 /* Now Playing */
 .mac .np { position: absolute; inset: 0; z-index: 8; overflow: hidden; background: #120d08; }
-.mac .np .wash { position: absolute; inset: -20%; filter: blur(90px) saturate(1.35); opacity: .95; }
+.mac .np .wash { position: absolute; inset: -20%; opacity: .95; }
 .mac .np .wash i { position: absolute; border-radius: 50%; }
 .mac .np .shade { position: absolute; inset: 0; background: radial-gradient(120% 90% at 30% 30%, transparent 30%, rgba(0,0,0,.55) 100%); }
 .mac .np .lights { top: 10px; left: 10px; gap: 9px; }
@@ -301,7 +301,7 @@
   -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 22%, #000 78%, transparent 100%); mask-image: linear-gradient(180deg, transparent 0, #000 22%, #000 78%, transparent 100%); }
 .mac .np .lyrics { position: absolute; left: 0; right: 0; top: 0; will-change: transform; }
 .mac .np .lyrics .sec { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; opacity: .45; margin: 26px 0 8px; }
-.mac .np .lyrics .ln { font-size: 25px; font-weight: 700; line-height: 36px; letter-spacing: -0.005em; color: #fff; opacity: .3; filter: blur(0.6px); transition: opacity .5s, filter .5s; }
+.mac .np .lyrics .ln { font-size: 25px; font-weight: 700; line-height: 36px; letter-spacing: -0.005em; color: #fff; opacity: .3; }
 .mac .np .lyrics .ln.on { opacity: 1; filter: none; }
 .mac .np .lyrics .ln.past { opacity: .55; filter: none; }
 

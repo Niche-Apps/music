@@ -78,10 +78,33 @@ export class AppWindow {
   warmUp() {
     // Lay out every hidden screen once (still invisible), so content-visibility caches its rendering
     // and the first time the tour shows it costs nothing.
-    const hidden = [...this.el.querySelectorAll<HTMLElement>('.page, .detail')].filter((e) => e.style.contentVisibility === 'hidden')
-    hidden.forEach((e) => (e.style.contentVisibility = 'visible'))
+    // Raster every hidden screen once (shown underneath at near-zero opacity for a few frames), so
+    // its images are uploaded to the GPU before the tour reaches it. Done one screen at a time.
     this.newRelease(0)
-    requestAnimationFrame(() => requestAnimationFrame(() => hidden.forEach((e) => { if (e.style.visibility === 'hidden') e.style.contentVisibility = 'hidden' })))
+    const hidden = [...this.el.querySelectorAll<HTMLElement>('.page')].filter((e) => e.style.visibility === 'hidden')
+    const rasterOne = (k: number) => {
+      const e = hidden[k]
+      if (!e) return
+      if (e.style.visibility !== 'hidden') { rasterOne(k + 1); return } // the tour already showed it
+      const prev = { o: e.style.opacity, z: e.style.zIndex }
+      e.style.contentVisibility = ''
+      e.style.visibility = ''
+      e.style.opacity = '0.001'
+      e.style.zIndex = '0'
+      let frames = 0
+      const tick = () => {
+        if (++frames < 4) { requestAnimationFrame(tick); return }
+        if (e.style.opacity === '0.001') { // untouched by the tour meanwhile: hide it again
+          e.style.visibility = 'hidden'
+          e.style.contentVisibility = 'hidden'
+          e.style.opacity = prev.o
+          e.style.zIndex = prev.z
+        }
+        setTimeout(() => rasterOne(k + 1), 120)
+      }
+      requestAnimationFrame(tick)
+    }
+    rasterOne(0)
     const imgs = [...this.el.querySelectorAll<HTMLImageElement>('img')]
     let i = 0
     const idle = (cb: () => void) => ('requestIdleCallback' in window ? requestIdleCallback(cb, { timeout: 400 }) : setTimeout(cb, 30))
@@ -144,7 +167,6 @@ export class AppWindow {
       }
       if (key === 'np') {
         page.style.transform = `translate3d(0, ${(1 - w) * 100}%, 0)`
-        page.style.borderRadius = `${(1 - w) * 16}px`
         continue
       }
       const arriving = key === top && w < 0.999
@@ -354,9 +376,9 @@ export class AppWindow {
     rows.querySelectorAll('.artist-row').forEach((r) => r.classList.toggle('selected', r === (k < 0.5 ? rowA : rowB)))
     page.querySelectorAll<HTMLElement>('.detail').forEach((d) => {
       const w = d.dataset.artist === ids[i] ? (i === j ? 1 : 1 - k) : d.dataset.artist === ids[j] ? k : 0
-      const show = w > 0.001
-      if ((d.style.visibility !== 'hidden') !== show) { d.style.visibility = show ? '' : 'hidden'; d.style.contentVisibility = show ? '' : 'hidden' }
-      d.style.opacity = String(d.dataset.artist === ids[j] && i !== j ? k : 1)
+      // All six stay composited (painted once); only opacity changes, so switching artists is free.
+      if (d.style.visibility) { d.style.visibility = ''; d.style.contentVisibility = '' }
+      d.style.opacity = String(w > 0.001 ? Math.max(0.001, d.dataset.artist === ids[j] && i !== j ? k : 1) : 0.001)
       d.style.zIndex = d.dataset.artist === ids[j] ? '2' : '1'
       const img = d.querySelector<HTMLElement>('.banner img')
       if (img) img.style.transform = `scale(${1.06 - 0.06 * (d.dataset.artist === ids[j] ? k : 1)})`
@@ -419,7 +441,7 @@ export class AppWindow {
     const pal = album.palette.length ? album.palette : ['#5a3a10', '#2a1a08', '#8a5a20']
     const blobs = pal.slice(0, 4).map((c, i) => {
       const r = seeded(album.id + i)
-      return `<i style="background:${c};width:${55 + r() * 30}%;height:${55 + r() * 35}%;left:${r() * 60 - 10}%;top:${r() * 60 - 10}%"></i>`
+      return `<i style="background:radial-gradient(closest-side, ${c}, transparent);width:${80 + r() * 40}%;height:${80 + r() * 45}%;left:${r() * 60 - 25}%;top:${r() * 60 - 25}%"></i>`
     }).join('')
     const lyrics = (track.lyrics ?? '').split('\n').map((line) => {
       const m = line.match(/^\[(.+)\]$/)
@@ -607,7 +629,6 @@ export class AppWindow {
     lines.forEach((l, k) => {
       const d = Math.abs(k - f)
       l.style.opacity = String(k < f ? Math.max(0.5, 1 - d * 0.5) : Math.max(0.3, 1 - d * 0.7))
-      l.style.filter = d < 0.6 ? 'none' : 'blur(0.6px)'
     })
     if (!this.lineTops.length || this.lineTops.every((v) => v === 0)) this.lineTops = lines.map((l) => l.offsetTop)
     const a = this.lineTops[Math.floor(f)], b = this.lineTops[Math.min(lines.length - 1, Math.floor(f) + 1)]

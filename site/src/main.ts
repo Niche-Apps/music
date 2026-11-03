@@ -455,8 +455,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
       ? `translate3d(${tx}px, ${ty}px, 0) scale(${sc}) rotateX(${rx}deg) rotateY(${ry}deg)`
       : `translate3d(${tx.toFixed(1)}px, ${ty.toFixed(1)}px, 0) scale(${sc.toFixed(4)})`
     wrap.style.opacity = String(1 - out * (L.compact ? 0.85 : 0.7))
-    const blur = out > 0.01 ? `blur(${(out * 2).toFixed(1)}px)` : ''
-    if (wrap.style.filter !== blur) wrap.style.filter = blur
+
     heroCopy.style.transform = `translate3d(0, ${-y * L.vh * 0.45}px, 0)`
     heroCopy.style.opacity = String(1 - clamp(y / 0.45))
     heroCopy.style.pointerEvents = y > 0.3 ? 'none' : ''
