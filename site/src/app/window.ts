@@ -673,6 +673,8 @@ export function chooseCast(lib: Library): Cast {
   const npAlbum = lib.trackAlbum.get(withLyrics.id)!
   const artists = ['Ansel Bellweather', 'Alderwake', 'Amalia Zorzán', 'Faro de Cobre', 'Crown of Satellites', 'Switchyard Orchard']
     .map(byName).filter((x): x is string => !!x)
+    // In list order, so the selection (and the list's scroll) only ever moves down.
+    .sort((a, b) => lib.artists.findIndex((x) => x.id === a) - lib.artists.findIndex((x) => x.id === b))
   return {
     nowPlaying: { track: withLyrics, album: npAlbum, artist: lib.artist(npAlbum.artistID) },
     artists: artists.length ? artists : lib.artists.slice(0, 5).map((a) => a.id),
