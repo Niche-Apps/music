@@ -566,13 +566,30 @@ function how(lib: Library, cast: Cast) {
 function numbers() {
   document.querySelectorAll<HTMLElement>('.numbers b[data-count]').forEach((b) => {
     const target = Number(b.dataset.count)
-    const suffix = b.dataset.suffix ?? ''
-    const obj = { v: 0 }
+    const prefix = b.dataset.prefix ?? ''
+    const obj = { v: target === 0 ? 9 : 0 }
     gsap.to(obj, {
-      v: target, duration: 2.2, ease: 'expo.out',
+      v: target, duration: 1.8, ease: 'expo.out',
       scrollTrigger: { trigger: b, start: 'top 85%' },
-      onUpdate: () => { b.textContent = Math.round(obj.v).toLocaleString() + suffix },
+      onUpdate: () => { b.textContent = prefix + Math.round(obj.v).toLocaleString() },
     })
+  })
+  // Infinity: the count races through a library that keeps growing, then gives up and shows ∞.
+  const inf = document.querySelector<HTMLElement>('.numbers b[data-infinite]')!
+  const run = { v: 0 }
+  ScrollTrigger.create({
+    trigger: inf, start: 'top 85%', once: true,
+    onEnter: () => {
+      gsap.to(run, {
+        v: 1, duration: 2.1, ease: 'power2.in',
+        onUpdate: () => { inf.textContent = Math.round(110 * Math.pow(10, run.v * 5)).toLocaleString() },
+        onComplete: () => {
+          inf.textContent = '∞'
+          inf.classList.add('is-inf')
+          gsap.fromTo(inf, { scale: 1.35, opacity: 0.4 }, { scale: 1, opacity: 1, duration: 0.9, ease: 'elastic.out(1, 0.5)' })
+        },
+      })
+    },
   })
   gsap.from('.numbers .num', { scrollTrigger: { trigger: '.numbers', start: 'top 85%' }, y: 30, opacity: 0, duration: 1.1, stagger: 0.08, ease: 'expo.out' })
 }

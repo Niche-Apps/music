@@ -136,7 +136,11 @@ section.listen, section.open { padding: clamp(80px, 14vh, 160px) max(20px, 5vw);
 .numbers .num { padding: clamp(30px, 6vh, 60px) max(20px, 2.5vw); border-right: 1px solid var(--line); }
 .numbers .num:last-child { border-right: 0; }
 .numbers b { display: block; font-family: var(--display); font-size: clamp(44px, 5.5vw, 88px); font-weight: 800; letter-spacing: -0.05em; line-height: 1; font-variant-numeric: tabular-nums; }
-.numbers span { display: block; margin-top: 10px; color: var(--ink-2); font-size: 14px; }
+.numbers span { display: block; margin-top: 10px; color: var(--ink-2); font-size: 14px; max-width: 18em; line-height: 1.45; }
+.numbers .infinite b { background: linear-gradient(92deg, #ff5d7a 0%, #ff9a6b 50%, #ffc8d4 100%); -webkit-background-clip: text; background-clip: text; color: transparent; display: inline-block; transform-origin: 0 60%; padding-bottom: 0.08em; }
+.numbers { position: relative; }
+.numbers .infinite b.is-inf { font-size: clamp(76px, 9.6vw, 154px); line-height: 0.5; font-weight: 600; letter-spacing: -0.02em; }
+.numbers-note { grid-column: 1 / -1; margin: 0; padding: 14px max(20px, 2.5vw); border-top: 1px solid var(--line); font-size: 12.5px; color: var(--ink-3); }
 
 /* ---------- Open ---------- */
 .open-grid { display: grid; grid-template-columns: 1fr 1.05fr; gap: clamp(30px, 5vw, 80px); align-items: center; }
