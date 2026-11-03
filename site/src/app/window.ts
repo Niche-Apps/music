@@ -94,6 +94,7 @@ export class AppWindow {
     add('create', this.createHTML())
     add('browse', this.browseHTML())
     add('np', this.nowPlayingHTML(), true)
+    add('taste', this.tasteHTML(), true)
     this.lyricsLines = [...this.pages.get('np')!.querySelectorAll<HTMLElement>('.ln')]
     this.setPlaying(this.playing)
   }
@@ -110,6 +111,12 @@ export class AppWindow {
       if (w <= 0.001) { if (page.style.visibility !== 'hidden') page.style.visibility = 'hidden'; continue }
       page.style.visibility = 'visible'
       page.style.zIndex = String(key === 'np' ? 20 : order.indexOf(key) + 1)
+      if (key === 'taste') {
+        page.style.zIndex = '22'
+        page.style.opacity = String(w)
+        page.style.transform = w < 0.999 ? `scale(${1 + (1 - w) * 0.05})` : ''
+        continue
+      }
       if (key === 'np') {
         page.style.transform = `translate3d(0, ${(1 - w) * 100}%, 0)`
         page.style.borderRadius = `${(1 - w) * 16}px`
@@ -199,6 +206,8 @@ export class AppWindow {
   }
 
   setPlaying(playing: boolean) {
+    if (this.playing === playing && this.el.dataset.playing === String(playing)) return
+    this.el.dataset.playing = String(playing)
     this.playing = playing
     this.el.querySelectorAll<HTMLElement>('[data-act="toggle"] span').forEach((s) => (s.innerHTML = playing ? icon.pause : icon.play))
     this.el.querySelectorAll('.eq').forEach((e) => e.classList.toggle('paused', !playing))
@@ -411,6 +420,59 @@ export class AppWindow {
         <div class="foot"><span class="brief">Optional brief for ${esc(loved[0]?.name ?? '')} — “their late-career acoustic record”</span><button class="nr2">${glyph(icon.disc, '')}New Release</button></div>
       </div>
     </div></div>`
+  }
+
+  /** Onboarding: "What do you love to listen to?" then "Anything else?", built from the library's own genres. */
+  private tasteHTML() {
+    const groups = new Map<string, string[]>()
+    for (const a of this.lib.artists) {
+      const g = a.genre.replace(/\b\w/g, (c) => c.toUpperCase())
+      groups.set(g, [...(groups.get(g) ?? []), a.id])
+    }
+    const tiles = [...groups.entries()].filter(([, ids]) => ids.length >= 2).sort((a, b) => b[1].length - a[1].length).slice(0, 12)
+    const tile = ([name, ids]: [string, string[]], i: number) => {
+      const pics = [0, 1, 2, 3].map((k) => ids[k % ids.length])
+      return `<div class="tile" data-i="${i}"><div class="collage">${pics.map((id) => `<img src="${media.artistThumb(id)}" alt="" loading="lazy">`).join('')}</div>
+        <b>${esc(name)}</b><span class="check">${icon.check}</span></div>`
+    }
+    const chips = ['More female vocals', 'Nothing too heavy', 'Lots of instrumentals', 'Love a big chorus', 'No country, please', 'Songs in other languages', 'Lo-fi and warm', 'Weird is good']
+    return `<div class="onboard"><div class="glow"></div><div class="lights"><i></i><i></i><i></i></div>
+      <div class="bar"><i></i></div>
+      <div class="ob-track">
+        <section class="step genres"><h1>What do you love to listen to?</h1><p>Pick as many genres as you like.</p>
+          <div class="tiles">${tiles.map(tile).join('')}</div></section>
+        <section class="step notes"><h1>Anything else we should know?</h1><p>Moods, eras, pet hates — in your own words. Totally optional.</p>
+          <div class="field"><span class="typed"></span><span class="ph">e.g. Rainy-day records, smoky voices, nothing with autotune</span></div>
+          <div class="chips">${chips.map((c) => `<span data-chip="${esc(c)}">${icon.plus}${esc(c)}</span>`).join('')}</div>
+          <div class="ob-explicit"><b>Explicit lyrics?</b><div><span class="on">Keep it clean</span><span>Explicit is fine</span></div></div></section>
+      </div>
+      <footer><span class="hint">Choose at least one</span><button class="go">Continue</button></footer></div>`
+  }
+
+  /** Onboarding state: genres picked (0…n, fractional animates the next pick), page (0 genres → 1 notes), typed notes. */
+  setTaste(picked: number, page: number, typed: string) {
+    const root = this.pages.get('taste')
+    if (!root) return
+    const order = [1, 4, 6]
+    root.querySelectorAll<HTMLElement>('.tile').forEach((t) => {
+      const k = order.indexOf(Number(t.dataset.i))
+      const v = k < 0 ? 0 : Math.max(0, Math.min(1, (picked - k) * 4))
+      t.style.setProperty('--on', String(v))
+      t.classList.toggle('on', v > 0.5)
+    })
+    const n = Math.min(order.length, Math.floor(picked + 0.75))
+    const p = Math.max(0, Math.min(1, page))
+    root.querySelector<HTMLElement>('.ob-track')!.style.transform = `translate3d(${-p * 50}%, 0, 0)`
+    root.querySelector<HTMLElement>('.bar i')!.style.width = `${12 + p * 70 + Math.min(n, 3) * 3}%`
+    root.querySelector('.hint')!.textContent = p > 0.5 ? (typed ? '' : 'You can skip this') : n ? `${n} selected` : 'Choose at least one'
+    const go = root.querySelector<HTMLElement>('.go')!
+    go.textContent = p > 0.5 ? 'Build My Library' : 'Continue'
+    go.classList.toggle('ready', n > 0)
+    const field = root.querySelector<HTMLElement>('.notes .field')!
+    field.querySelector('.typed')!.textContent = typed
+    field.querySelector<HTMLElement>('.ph')!.style.display = typed ? 'none' : ''
+    field.classList.toggle('focus', typed.length > 0)
+    root.querySelectorAll<HTMLElement>('.chips span').forEach((c) => c.classList.toggle('on', typed.toLowerCase().includes((c.dataset.chip ?? '').toLowerCase().replace(', please', ''))))
   }
 
   /** Create page: the describe field, typed out by the tour. */

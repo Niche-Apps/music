@@ -65,7 +65,7 @@ const perArtist = new Map()
 const featured = []
 for (const t of ready) {
   const n = perArtist.get(t.artistID) ?? 0
-  if (n >= 2 || featured.length >= 16) continue
+  if (n >= 1 || featured.length >= 16) continue // one song per artist: every clip is a different band
   perArtist.set(t.artistID, n + 1)
   featured.push(t.id)
 }

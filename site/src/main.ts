@@ -99,7 +99,7 @@ interface Step {
   chips?: string[]
   play?: boolean
   /** The app screen: a sidebar destination, a pushed page, or Now Playing. */
-  page: 'home' | 'artists' | 'album' | 'create' | 'browse' | 'np'
+  page: 'taste' | 'home' | 'artists' | 'album' | 'create' | 'browse' | 'np'
   nav: string
   /** How this step's page arrives when it differs from the last one. */
   arrive?: 'swap' | 'push' | 'slide-up'
@@ -123,11 +123,28 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
   const heroDetail = `.layer-artists .detail[data-artist="${hero.id}"]`
   const sparkle = `<span style="width:15px;height:15px;color:#fd4c6b">${icon.sparkles}</span>`
 
+  const notes = 'Big choruses. Nothing too heavy, and no country, please.'
   const steps: Step[] = [
     {
-      kicker: 'Discover', title: 'Open it up and meet bands you’ve never heard of.',
-      body: `Standard Music fills your library with artists who don’t exist anywhere else: ${lib.artists.length} of them and ${lib.albums.length} albums deep, shaped by what you love. Every song in it is unique to you.`,
-      chips: ['Fresh from the Studio', 'Recently Played', 'Because You Like…'],
+      kicker: 'Your taste', title: 'Tell it what you love, and what you don’t.',
+      body: 'Pick the genres you love, name a few artists you already know, answer some this-or-that questions, and add any pet hates in your own words. That’s your taste profile.',
+      chips: ['Genres', 'Artists you love', 'This or that', 'Pet hates'],
+      page: 'taste', nav: 'home',
+      update: (t) => win.setTaste(clamp((t - 0.08) / 0.36) * 3, smooth(clamp((t - 0.5) / 0.08)), notes.slice(0, Math.round(clamp((t - 0.6) / 0.24) * notes.length))),
+      focus: [{ t: 0, rect: [100, 60, 1240, 560] }, { t: 0.45, rect: [700, 520, 740, 380] }, { t: 0.6, rect: [300, 60, 840, 560] }, { t: 0.9, rect: [700, 560, 740, 340] }],
+      cursor: [
+        { t: 0.1, sel: '.onboard .tile[data-i="1"]' }, { t: 0.14, sel: '.onboard .tile[data-i="1"]', click: true },
+        { t: 0.22, sel: '.onboard .tile[data-i="4"]' }, { t: 0.26, sel: '.onboard .tile[data-i="4"]', click: true },
+        { t: 0.34, sel: '.onboard .tile[data-i="6"]' }, { t: 0.38, sel: '.onboard .tile[data-i="6"]', click: true },
+        { t: 0.46, sel: '.onboard .go' }, { t: 0.5, sel: '.onboard .go', click: true },
+        { t: 0.58, sel: '.onboard .notes .field' }, { t: 0.6, sel: '.onboard .notes .field', click: true },
+        { t: 0.88, sel: '.onboard .go' }, { t: 0.95, sel: '.onboard .go', click: true },
+      ],
+    },
+    {
+      kicker: 'Then it creates the artists', title: 'Meet bands you’ve never heard of.',
+      body: `From your answers it invents a starting roster of ${lib.artists.length} artists, each with a hometown, a career and a discography, and records their songs as you play them. Want more? It makes new artists whenever you ask. Every song is unique to you.`,
+      chips: ['A starting roster', 'Fresh from the Studio', 'Because You Like…'],
       page: 'home', nav: 'home',
       update: (t) => win.scrollFraction(clamp(t / 0.8), 'home'),
       focus: [{ t: 0, rect: [230, 52, 1210, 470] }, { t: 0.55, rect: [230, 260, 1210, 600] }, { t: 0.82, rect: [0, 40, 560, 420] }],
@@ -354,7 +371,8 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
     let order = [cur.page]
     let push = false
     if (prev && prev.page !== cur.page && s >= 0) {
-      if (prev.page === 'np') { weights.set(cur.page, 1); weights.set('np', 1 - kIn) }
+      if (prev.page === 'taste') { weights.set(cur.page, 1); weights.set('taste', 1 - smooth(clamp((s - idx) / 0.12))) }
+      else if (prev.page === 'np') { weights.set(cur.page, 1); weights.set('np', 1 - kIn) }
       else if (cur.page === 'np') { weights.set(prev.page, 1); weights.set('np', kIn) }
       else { weights.set(prev.page, 1); weights.set(cur.page, kIn); order = [prev.page, cur.page]; push = cur.arrive === 'push' }
     } else weights.set(cur.page, 1)
@@ -464,7 +482,9 @@ function listen(lib: Library, player: Player) {
     cards.forEach((c, id) => {
       const on = track?.id === id
       c.el.classList.toggle('on', on && playing)
-      $('.pp b', c.el).innerHTML = on && playing ? PAUSE : PLAY
+      const pp = $('.pp b', c.el)
+      const want = on && playing ? 'pause' : 'play'
+      if (pp.dataset.state !== want) { pp.dataset.state = want; pp.innerHTML = want === 'pause' ? PAUSE : PLAY }
       c.draw(on ? time / duration : 0)
     })
   })
@@ -618,7 +638,8 @@ function dock(lib: Library, player: Player, win: AppWindow, cast: Cast) {
       $('small', el).textContent = `${lib.artist(al.artistID).name} — ${al.title}`
       win.setNowPlaying({ track, album: al, artist: lib.artist(al.artistID) })
     }
-    $('button', el).innerHTML = playing ? PAUSE : PLAY
+    const btn = $('button', el)
+    if (btn.dataset.playing !== String(playing)) { btn.dataset.playing = String(playing); btn.innerHTML = playing ? PAUSE : PLAY }
     $<HTMLElement>('.bar i', el).style.width = `${(time / duration) * 100}%`
     win.setPlaying(playing)
     win.setProgress(time / duration, time, duration)
