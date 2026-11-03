@@ -392,3 +392,58 @@
 .menuextra .studio .ring { width: 22px; height: 22px; flex: none; }
 .menuextra .studio b { font-size: 12px; font-weight: 600; display: block; }
 .menuextra .studio small { font-size: 11px; color: #b9bbc2; }
+
+/* ---------- Create ---------- */
+.mac .create { padding: 0 147px 40px; }
+.mac .create .panel { margin-top: 26px; border-radius: 16px; background: #31353f; box-shadow: inset 0 0 0 1px rgba(255,255,255,.07); padding: 20px; }
+.mac .create .ph { display: block; font-size: 15px; font-weight: 700; margin-bottom: 14px; }
+.mac .create .describe { height: 68px; border-radius: 10px; background: #3d414c; padding: 14px; font-size: 16px; color: #aeb1ba; position: relative; box-shadow: inset 0 0 0 1px rgba(255,255,255,.05); }
+.mac .create .describe.focus { box-shadow: inset 0 0 0 1px rgba(255,255,255,.05), 0 0 0 3px rgba(253,76,107,.45); color: #fff; }
+.mac .create .describe .typed::after { content: ''; display: inline-block; width: 1.5px; height: 18px; background: var(--accent); vertical-align: -3px; margin-left: 1px; opacity: 0; }
+.mac .create .describe.focus .typed::after { opacity: 1; animation: caret 1s steps(1) infinite; }
+.mac .create .ideas { display: flex; flex-wrap: wrap; gap: 7px 7px; margin-top: 12px; }
+.mac .create .ideas span { font-size: 11.5px; color: #a7a9b0; padding: 3px 9px; border-radius: 5px; background: #3a3e48; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
+.mac .create .foot { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+.mac .create .foot b { font-size: 13px; font-weight: 600; }
+.mac .create .foot .stepper { font-size: 8px; line-height: 7px; color: #9a9ca3; background: #3d414c; border-radius: 5px; padding: 2px 4px; }
+.mac .create .foot small { font-size: 11px; color: var(--text-2); }
+.mac .create .foot .spacer { flex: 1; }
+.mac .create .create-btn { height: 30px; padding: 0 16px; border-radius: 15px; gap: 6px; font-size: 13px; color: #9a9ca3; background: #3a3e48; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); transition: background .25s, color .25s, transform .15s; }
+.mac .create .create-btn span { width: 13px; height: 13px; }
+.mac .create .create-btn.ready { background: var(--accent); color: #fff; }
+.mac .create .create-btn.busy { transform: scale(.95); filter: brightness(.9); }
+.mac .create .ph2 { display: flex; gap: 10px; }
+.mac .create .ph2 .glyph { width: 22px; height: 22px; color: var(--accent); }
+.mac .create .ph2 b { display: block; font-size: 15px; font-weight: 700; }
+.mac .create .ph2 small { font-size: 12.5px; color: var(--text-2); }
+.mac .create .loved { display: flex; gap: 16px; margin-top: 16px; overflow: hidden; }
+.mac .create .loved div { width: 70px; flex: none; text-align: center; }
+.mac .create .loved img { width: 62px; height: 62px; border-radius: 50%; object-fit: cover; display: block; margin: 0 auto; }
+.mac .create .loved div.on img { box-shadow: 0 0 0 2.5px var(--content), 0 0 0 4.5px var(--accent); }
+.mac .create .loved span { display: block; font-size: 11px; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-2); }
+.mac .create .loved div.on span { color: var(--text); font-weight: 600; }
+.mac .create .brief { flex: 1; height: 24px; border-radius: 6px; background: #3d414c; font-size: 12.5px; color: #c4c6cc; display: flex; align-items: center; padding: 0 7px; }
+.mac .create .nr2 { height: 24px; padding: 0 12px; border-radius: 12px; gap: 6px; font-size: 12.5px; color: #9a9ca3; background: #3a3e48; }
+.mac .create .nr2 span { width: 12px; height: 12px; }
+
+/* ---------- New Release popover ---------- */
+.mac .banner .pill.active { background: rgba(255,255,255,.3); }
+.mac .nr-pop { position: absolute; z-index: 3; top: 22px; width: 340px; padding: 16px; border-radius: 14px; background: rgba(48,51,60,.97); box-shadow: 0 0 0 .5px rgba(0,0,0,.8), inset 0 0 0 1px rgba(255,255,255,.1), 0 20px 50px rgba(0,0,0,.5); animation: pop .25s cubic-bezier(.2,.9,.3,1.2); }
+@keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.96); } }
+.mac .nr-pop b { display: block; font-size: 13px; font-weight: 600; }
+.mac .nr-pop small { display: block; font-size: 12px; color: var(--text-2); margin-top: 4px; line-height: 15px; }
+.mac .nr-pop .field { margin-top: 10px; min-height: 40px; border-radius: 6px; background: #1f2126; padding: 6px 8px; font-size: 12.5px; color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+.mac .nr-pop .field span { color: #7c7f88; }
+.mac .nr-pop .field.focus { box-shadow: 0 0 0 3px rgba(79,157,250,.55); }
+.mac .nr-pop .field .caret { display: inline-block; width: 1.5px; height: 14px; background: #4f9dfa; vertical-align: -2px; margin-left: 1px; animation: caret 1s steps(1) infinite; }
+.mac .nr-pop .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.mac .nr-pop .row span { font-size: 12.5px; padding: 3px 11px; border-radius: 6px; background: #555862; }
+.mac .nr-pop .row span.go { background: #3d7ff2; }
+
+/* ---------- Cursor ---------- */
+.mac .cursor { position: absolute; left: 0; top: 0; z-index: 30; width: 28px; height: 28px; pointer-events: none; opacity: 0; transition: opacity .3s; filter: drop-shadow(0 2px 3px rgba(0,0,0,.45)); will-change: transform; }
+.mac .cursor svg { width: 28px; height: 28px; }
+.mac .cursor .ripple { position: absolute; left: 6px; top: 4px; width: 0; height: 0; }
+.mac .cursor .ripple::after { content: ''; position: absolute; left: -22px; top: -22px; width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,.35); box-shadow: 0 0 0 2px rgba(255,255,255,.5); transform: scale(0); opacity: 0; }
+.mac .cursor .ripple.go::after { animation: ripple .55s ease-out; }
+@keyframes ripple { 0% { transform: scale(.2); opacity: 1; } 100% { transform: scale(1.3); opacity: 0; } }

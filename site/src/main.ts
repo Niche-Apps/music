@@ -82,6 +82,12 @@ function heroIntro() {
 
 // ---------- Tour ----------
 
+type Rect = [number, number, number, number] // x, y, w, h in window points
+/** Where the camera looks (compact screens): a selector (with padding) or a fixed rect. */
+type Focus = { t: number; sel?: string; rect?: Rect; pad?: number }
+/** Where the cursor goes; `click` fires the ripple as the scroll passes `t`. */
+type Aim = { t: number; sel: string | null; click?: boolean }
+
 interface Step {
   kicker: string
   title: string
@@ -91,89 +97,135 @@ interface Step {
   enter: () => void
   update?: (t: number) => void
   leave?: () => void
+  focus?: Focus[]
+  cursor?: Aim[]
 }
+
+const FULL: Rect = [0, 0, 1440, 900]
 
 function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
   const studioTrack = cast.nowPlaying
+  const hero = lib.artist(cast.artists[cast.artists.length - 1])
+  const createIdea = 'Late-night jazz from a fictional 1960s Lisbon'
+  const brief = 'a stripped-back winter record'
+  const artistRows = cast.artists.map((id) => `.artist-row[data-artist="${id}"]`)
+  const nArtists = cast.artists.length
+  let shown = ''
+
   const steps: Step[] = [
     {
-      kicker: 'Home', title: 'A record collection that didn’t exist this morning.',
-      body: `Tell it what you love. Standard Music invents the artists, writes their discographies, art-directs the covers and fills your library: ${lib.artists.length} artists and ${lib.albums.length} albums deep, all of them only yours.`,
-      chips: ['Fresh from the Studio', 'Recently Played', 'Because you like…'],
+      kicker: 'Discover', title: 'Open it up and meet bands you’ve never heard of.',
+      body: `Standard Music fills your library with artists who don’t exist anywhere else: ${lib.artists.length} of them and ${lib.albums.length} albums deep, shaped by what you love. Every song in it is unique to you.`,
+      chips: ['Fresh from the Studio', 'Recently Played', 'Because You Like…'],
       enter: () => win.show('home'),
-      update: (t) => win.scrollFraction(t / 0.92),
+      update: (t) => win.scrollFraction(t / 0.82),
+      focus: [{ t: 0, rect: [230, 52, 1210, 470] }, { t: 0.55, rect: [230, 300, 1210, 600] }, { t: 0.85, rect: [0, 40, 560, 420] }],
+      cursor: [{ t: 0.1, sel: '.hero-card .play' }, { t: 0.45, sel: '.row-of .card:nth-child(2) .art' }, { t: 0.86, sel: '.nav .item[data-key="artists"]' }, { t: 0.92, sel: '.nav .item[data-key="artists"]', click: true }],
     },
     {
-      kicker: 'Artists', title: 'Artists with a past.',
-      body: 'Every artist has a hometown, a career arc, a voice that never changes, and a hidden “soul” that keeps every song in character. Photos are composed around faces, the way an editor would crop them.',
-      chips: ['Bios', 'Fixed voices', 'Press photos', 'New Release'],
+      kicker: 'Artists', title: 'Every artist has a story.',
+      body: 'Where they grew up, how they broke through, who left the band, the comeback. Each artist gets a backstory, a narrative arc and a vocal profile that never changes, so they sound like themselves on every record.',
+      chips: ['Backstories', 'Career arcs', 'Fixed voices', 'Press photos'],
       enter: () => { win.show('artists', cast.artists[0]); shown = cast.artists[0] },
       update: (t) => {
-        const id = cast.artists[Math.min(cast.artists.length - 1, Math.floor(t * cast.artists.length))]
+        const id = cast.artists[Math.min(nArtists - 1, Math.floor((t / 0.8) * nArtists))]
         if (id !== shown) { shown = id; win.selectArtist(id) }
       },
+      focus: [{ t: 0, rect: [230, 40, 520, 640] }, { t: 0.3, rect: [230, 52, 1210, 420] }, { t: 0.8, rect: [230, 52, 1210, 420] }, { t: 0.95, rect: [460, 380, 980, 520] }],
+      cursor: [
+        ...cast.artists.slice(1).flatMap((_, k) => {
+          const at = ((k + 1) / nArtists) * 0.8
+          return [{ t: at - 0.06, sel: artistRows[k + 1] }, { t: at - 0.015, sel: artistRows[k + 1], click: true }]
+        }),
+        { t: 0.86, sel: `.artist-detail .card[data-album="${cast.album}"] .art` },
+        { t: 0.94, sel: `.artist-detail .card[data-album="${cast.album}"] .art`, click: true },
+      ],
     },
     {
-      kicker: 'Albums', title: 'Liner notes, labels, and a sound.',
-      body: 'Every release has a track list, a label, a year and editor’s notes. Each cover gets its own direction: a band photo, a painting, a typographic sleeve, a collage.',
-      chips: ['Track lists', 'Cover art', 'Explicit badges'],
+      kicker: 'Discographies', title: 'Albums that follow the plot.',
+      body: 'The hungry debut, the difficult third record, the late-career reinvention. Discographies reflect the story, with track lists, liner notes, labels and covers that fit the year and the scene.',
+      chips: ['Liner notes', 'Cover art', 'Release years'],
       enter: () => win.show('album', cast.album),
-      update: (t) => win.scrollFraction(t / 0.92),
+      update: (t) => win.scrollFraction(clamp((t - 0.2) / 0.5)),
+      focus: [{ t: 0, rect: [230, 52, 1210, 340] }, { t: 0.5, rect: [230, 300, 1210, 600] }, { t: 0.82, rect: [240, 52, 900, 420] }],
+      cursor: [{ t: 0.15, sel: '.album-head .notes' }, { t: 0.55, sel: '.track:nth-child(4) .ttl' }, { t: 0.86, sel: '.album-head .btn.red' }, { t: 0.93, sel: '.album-head .btn.red', click: true }],
     },
     {
-      kicker: 'In the studio', title: 'Press play, and your Mac records it.',
-      body: 'There’s no stream. When you press play, your Mac writes the lyrics, plans the score and records a finished song with YuE2 on Apple silicon. Record-ahead keeps the next song ready before you get there.',
+      kicker: 'In the studio', title: 'Press play. It’s recorded right then.',
+      body: 'Your Mac writes the lyrics and records the song in the artist’s voice with YuE2 on Apple silicon, in about the time it takes to make a coffee. Nobody has heard it before you.',
       chips: ['Writing lyrics', 'Writing the score', 'Laying down the tracks', 'Mastering'],
       enter: () => { win.setNowPlaying(studioTrack); win.show('nowplaying'); win.setStudio(0) },
-      update: (t) => {
-        const f = clamp(t * 1.12)
-        win.setStudio(f)
-        win.sidebarStudio(null)
-      },
+      update: (t) => win.setStudio(clamp(t * 1.12)),
+      focus: [{ t: 0, rect: [160, 90, 1180, 720] }, { t: 0.4, rect: [660, 200, 740, 440] }, { t: 0.95, rect: [660, 200, 740, 440] }],
+      cursor: [{ t: 0, sel: null }],
     },
     {
-      kicker: 'Lyrics', title: 'Lyrics that leave room.',
-      body: 'Every song is written in its artist’s own register: oblique, strange, tender, sometimes explicit if you allow it. They’re never greeting cards.',
+      kicker: 'Lyrics', title: 'Songs that back up the story.',
+      body: 'Lyrics are written for that artist at that moment in their career: oblique, tender, furious, sometimes explicit if you allow it. Read along and the arc is in the words.',
       play: true,
       enter: () => { win.setNowPlaying(studioTrack); win.show('nowplaying'); win.setStudio(null) },
       update: (t) => { if (!(player.playing && player.track?.id === studioTrack.track.id)) win.setLyricsProgress(clamp(t * 1.05)) },
+      focus: [{ t: 0, rect: [640, 120, 760, 660] }, { t: 0.85, rect: [640, 120, 760, 660] }, { t: 0.97, rect: [1200, 0, 240, 160] }],
+      cursor: [{ t: 0.84, sel: null }, { t: 0.88, sel: '.np .corner button:last-child' }, { t: 0.95, sel: '.np .corner button:last-child', click: true }],
     },
     {
-      kicker: 'Up Next', title: 'It records ahead, then keeps going.',
-      body: 'Up Next shows what’s recording next. When the album ends, Autoplay picks something similar from your library, so the music doesn’t stop.',
-      chips: ['Record-ahead', 'Autoplay', 'Stop Recording ⌘.'],
-      enter: () => { win.show('album', cast.album); win.panel('queue'); win.sidebarStudio({ title: `Recording “${nextTitle(lib, cast)}”`, sub: 'Laying down the tracks · about 1 min', fraction: 0.4 }) },
-      update: (t) => win.sidebarStudio({ title: `Recording “${nextTitle(lib, cast)}”`, sub: `Laying down the tracks · ${Math.max(1, Math.round(80 - t * 60))} s left`, fraction: 0.35 + t * 0.55 }),
-      leave: () => { win.panel('none'); win.sidebarStudio(null) },
+      kicker: 'More please', title: 'Love an artist? Ask for another album.',
+      body: `Hit New Release and ${hero.name} makes their next record, continuing their story. Give it a brief if you like (“a stripped-back winter record”) or let them surprise you.`,
+      chips: ['New Release', 'More Like This', 'Optional brief'],
+      enter: () => { win.show('artists', hero.id); shown = hero.id },
+      update: (t) => {
+        const open = t > 0.22 && t < 0.74
+        const typed = brief.slice(0, Math.round(clamp((t - 0.3) / 0.3) * brief.length))
+        win.newRelease(open ? { brief: typed } : null)
+        win.toast(t >= 0.74 ? `<span style="width:15px;height:15px;color:#fd4c6b">${icon.sparkles}</span>Writing ${hero.name}’s next album…` : null)
+      },
+      leave: () => { win.newRelease(null); win.toast(null) },
+      focus: [{ t: 0, rect: [460, 52, 980, 380] }, { t: 0.25, rect: [900, 120, 540, 420] }, { t: 0.75, rect: [700, 120, 740, 420] }, { t: 0.92, rect: [0, 60, 520, 300] }],
+      cursor: [
+        { t: 0.12, sel: '.banner .pill.nr' }, { t: 0.2, sel: '.banner .pill.nr', click: true },
+        { t: 0.3, sel: '.nr-pop .field' }, { t: 0.64, sel: '.nr-pop .go' }, { t: 0.72, sel: '.nr-pop .go', click: true },
+        { t: 0.86, sel: '.nav .item[data-key="create"]' }, { t: 0.93, sel: '.nav .item[data-key="create"]', click: true },
+      ],
     },
     {
-      kicker: 'Browse', title: 'Every sound in your library, by genre.',
-      body: 'Browse groups your library into the genres you actually own, from Italian opera to arena rock. Each genre stays true to how it sounds on real records.',
+      kicker: 'Create', title: 'Dream up a whole new scene.',
+      body: 'Describe a sound, a city, an era — anything. Standard Music writes brand-new artists to match, each one arriving with a backstory, a discography and cover art. Make more whenever you like.',
+      chips: ['Any idea', 'More Like This', 'Discover for me'],
+      enter: () => win.show('create'),
+      update: (t) => {
+        win.typeCreate(createIdea.slice(0, Math.round(clamp((t - 0.12) / 0.4) * createIdea.length)), t > 0.68 && t < 0.74)
+        win.toast(t >= 0.72 ? `<span style="width:15px;height:15px;color:#fd4c6b">${icon.sparkles}</span>Writing 4 new artists…` : null)
+      },
+      leave: () => win.toast(null),
+      focus: [{ t: 0, rect: [370, 60, 940, 430] }, { t: 0.6, rect: [800, 330, 520, 160] }, { t: 0.85, rect: [370, 450, 940, 300] }],
+      cursor: [{ t: 0.08, sel: '.create .describe' }, { t: 0.1, sel: '.create .describe', click: true }, { t: 0.6, sel: '.create .create-btn' }, { t: 0.68, sel: '.create .create-btn', click: true }, { t: 0.9, sel: '.create .loved div:nth-child(3) img' }],
+    },
+    {
+      kicker: 'Browse', title: 'Wander your own record store.',
+      body: 'Browse your library by genre, from Italian opera to arena rock, and find the band you didn’t know you were looking for. Every genre sounds the way it does on real records.',
       enter: () => win.show('browse'),
-      update: (t) => win.scrollFraction(t / 0.92),
+      update: (t) => win.scrollFraction(t / 0.9),
+      focus: [{ t: 0, rect: [230, 52, 1210, 480] }, { t: 0.7, rect: [230, 300, 1210, 600] }],
+      cursor: [{ t: 0.15, sel: '.genre-tile:nth-child(2)' }, { t: 0.5, sel: '.genre-tile:nth-child(7)' }, { t: 0.85, sel: '.genre-tile:nth-child(10)' }],
     },
     {
-      kicker: 'Library', title: 'A real library, not a playlist.',
-      body: 'Songs, plays, favourites, filters and search all live in a SQLite library on your Mac. It checks itself at every launch and keeps rolling backups.',
-      chips: ['SQLite', 'Search', 'Favorites', 'Backups'],
-      enter: () => win.show('songs'),
-      update: (t) => win.scrollFraction(t / 0.92),
-    },
-    {
-      kicker: 'Sharing', title: 'Hand someone an entire band.',
-      body: 'Share an album as one file over AirDrop, Messages or Mail. It carries the artist, their soul, the covers and any recordings. Your friend’s Mac records the rest, with no servers and no accounts.',
+      kicker: 'Share', title: 'Introduce a friend to your new favourite band.',
+      body: 'Send an album as one file over AirDrop or Messages. It carries the artist, their story, the covers and any recordings, and your friend’s Mac records the rest. No servers, no accounts.',
       chips: ['.standardalbum', 'AirDrop', 'No cloud'],
-      enter: () => { win.show('album', cast.album); win.shareSheet(true) },
+      enter: () => win.show('album', cast.album),
+      update: (t) => win.shareSheet(t > 0.2),
       leave: () => win.shareSheet(false),
+      focus: [{ t: 0, rect: [900, 40, 540, 360] }, { t: 0.3, rect: [450, 40, 540, 500] }],
+      cursor: [{ t: 0.1, sel: '.album-head .circle.filled' }, { t: 0.18, sel: '.album-head .circle.filled', click: true }, { t: 0.6, sel: '.sheet .buttons .primary' }, { t: 0.7, sel: '.sheet .buttons .primary', click: true }, { t: 0.85, sel: null }],
     },
     {
-      kicker: 'Everywhere on your Mac', title: 'MiniPlayer and the menu bar.',
-      body: 'Shrink it to a floating MiniPlayer, or run it from the menu bar while the studio works in the background.',
+      kicker: 'Everywhere on your Mac', title: 'It feels like real music because it is.',
+      body: 'Keep it playing in a floating MiniPlayer or from the menu bar while the studio records the next song. Who knows, maybe the next Grammy is hiding in the weights.',
       chips: ['MiniPlayer ⇧⌘M', 'Menu bar', 'Notifications'],
-      enter: () => { win.show('home') },
+      enter: () => win.show('home'),
+      cursor: [{ t: 0, sel: null }],
     },
   ]
-  let shown = ''
   document.documentElement.style.setProperty('--tour-steps', String(steps.length))
 
   // Copy blocks
@@ -211,64 +263,127 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
   const wrap = $('.window-scale')
   const heroCopy = $('.hero-copy')
   const wall = $('.wall')
-  const wallFade = $('.wall-fade')
+  const stage = $('.stage')
+  const viewport = $('.viewport')
   let active = -1
 
+  // Layout: "wide" shows the whole window beside the copy; "compact" (narrow, tall or phone
+  // screens) gives the window the top of the screen and tours it with a zooming camera.
   const layout = () => {
     const vw = innerWidth, vh = innerHeight
-    const mobile = vw < 900
-    const tourScale = mobile ? (vw * 0.94) / 1440 : Math.min((vw * 0.6) / 1440, (vh * 0.78) / 900)
-    const tourX = mobile ? 0 : vw * 0.665 - vw / 2
-    const tourY = mobile ? -vh * 0.17 : vh * 0.02
-    const heroScale = mobile ? (vw * 0.96) / 1440 : Math.min((vw * 0.8) / 1440, (vh * 0.95) / 900)
-    const heroY = vh * (mobile ? 0.86 : 0.8) + (900 * heroScale) / 2 - vh / 2
-    return { vw, vh, mobile, tourScale, tourX, tourY, heroScale, heroY }
+    const compact = vw < 1100 || vw / vh < 1.25
+    stage.classList.toggle('compact', compact)
+    const area = compact
+      ? { x: vw * 0.03, y: 64, w: vw * 0.94, h: Math.max(220, vh * (vw < 700 ? 0.5 : vw > 1000 ? 0.64 : 0.58) - 64) }
+      : { x: vw * 0.355, y: vh * 0.11, w: vw * 0.62, h: vh * 0.78 }
+    const heroScale = compact ? Math.min((vw * 0.96) / 1440, (vh * 0.9) / 900) : Math.min((vw * 0.8) / 1440, (vh * 0.95) / 900)
+    const heroY = vh * (compact ? 0.84 : 0.8) + (900 * heroScale) / 2 - vh / 2
+    stage.style.setProperty('--copy-top', `${area.y + area.h + 18}px`)
+    // Phones crop into the window rather than shrinking it to an unreadable thumbnail.
+    const minZoom = compact ? Math.min(0.55, area.w / 700) : 0
+    return { vw, vh, compact, area, heroScale, heroY, minZoom, maxZoom: compact ? (vw < 700 ? 1.05 : 1.2) : 1 }
   }
   let L = layout()
   addEventListener('resize', () => { L = layout(); ScrollTrigger.refresh() })
 
+  /** Camera transform that fits rect r (window points) into the layout's area. */
+  const camera = (r: Rect) => {
+    const { area } = L
+    const s = Math.max(L.minZoom, Math.min(area.w / r[2], area.h / r[3], L.maxZoom))
+    // When the rect doesn't fit (phones), keep its top-left in view: app content reads from there.
+    const vwPts = area.w / s, vhPts = area.h / s
+    const cx = vwPts < r[2] ? r[0] + vwPts / 2 : r[0] + r[2] / 2
+    const cy = vhPts < r[3] ? r[1] + vhPts / 2 : r[1] + r[3] / 2
+    return { x: area.x + area.w / 2 - L.vw / 2 - (cx - 720) * s, y: area.y + area.h / 2 - L.vh / 2 - (cy - 450) * s, s }
+  }
+  const focusRect = (f: Focus): Rect => {
+    if (f.sel) {
+      const el = win.el.querySelector(f.sel)
+      const box = win.el.getBoundingClientRect()
+      if (el && box.width) {
+        const r = el.getBoundingClientRect(), k = box.width / 1440, pad = f.pad ?? 40
+        return [(r.left - box.left) / k - pad, (r.top - box.top) / k - pad, r.width / k + pad * 2, r.height / k + pad * 2]
+      }
+    }
+    return f.rect ?? FULL
+  }
+  const lerpRect = (a: Rect, b: Rect, t: number): Rect => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t), lerp(a[3], b[3], t)]
+  const at = <T extends { t: number }>(keys: T[], t: number): [T, T, number] => {
+    if (t <= keys[0].t) return [keys[0], keys[0], 0]
+    for (let i = 1; i < keys.length; i++) if (t <= keys[i].t) return [keys[i - 1], keys[i], (t - keys[i - 1].t) / (keys[i].t - keys[i - 1].t)]
+    const last = keys[keys.length - 1]
+    return [last, last, 0]
+  }
+  const stepRect = (i: number, t: number): Rect => {
+    const f = L.compact ? steps[i]?.focus : undefined
+    if (!f?.length) return FULL
+    const [a, b, k] = at(f, t)
+    return lerpRect(focusRect(a), focusRect(b), ease(k))
+  }
+
+  // Cursor: interpolates between aim points; clicks fire once as the scroll passes them.
+  let lastCursor = { step: -1, t: 0 }
+  const updateCursor = (i: number, t: number) => {
+    const aims = steps[i]?.cursor
+    if (!aims?.length || i < 0) { win.cursor(null); return }
+    const [a, b, k] = at(aims, t)
+    const pa = a.sel ? win.point(a.sel) : null
+    const pb = b.sel ? win.point(b.sel) : null
+    const p = pa && pb ? { x: lerp(pa.x, pb.x, ease(k)), y: lerp(pa.y, pb.y, ease(k)) } : t >= b.t ? pb : pa ?? pb
+    const pressed = aims.some((c) => c.click && Math.abs(t - c.t) < 0.012)
+    win.cursor(t < aims[0].t - 0.06 && aims[0].sel ? null : p, pressed)
+    if (lastCursor.step === i && t > lastCursor.t) {
+      for (const c of aims) if (c.click && lastCursor.t < c.t && t >= c.t) win.clickRipple()
+    }
+    lastCursor = { step: i, t }
+  }
+
   const apply = (y: number) => {
     // y: scroll position in viewport heights from the top of the tour.
-    const intro = ease(clamp(y / 0.95))
-    const sx = lerp(0, L.tourX, intro)
-    const sy = lerp(L.heroY, L.tourY, intro)
-    const sc = lerp(L.heroScale, L.tourScale, intro)
-    const rx = lerp(24, 0, ease(clamp(y / 0.8)))
-    const end = steps.length + 1
-    // Final step: the window steps back so the MiniPlayer and menu bar take over.
-    const out = ease(clamp((y - (end - 0.75)) / 0.5))
-    wrap.style.transform = `translate3d(${sx - out * (L.mobile ? 0 : L.vw * 0.2)}px, ${sy + out * 30}px, 0) scale(${sc * (1 - out * 0.22)}) rotateX(${rx}deg) rotateY(${out * 14}deg)`
-    wrap.style.opacity = String(1 - out * 0.7)
-    wrap.style.filter = out > 0.01 ? `blur(${out * 2}px)` : ''
-    heroCopy.style.transform = `translate3d(0, ${-y * L.vh * 0.45}px, 0)`
-    heroCopy.style.opacity = String(1 - clamp(y / 0.45))
-    heroCopy.style.pointerEvents = y > 0.3 ? 'none' : ''
-    wall.style.opacity = String(0.5 * (1 - clamp(y / 0.7)))
-    wallFade.style.opacity = String(1 - clamp((y - 0.4) / 0.6) * 0.0)
-
-    // Steps
     const s = y - 1
     const idx = s < 0 ? -1 : Math.min(steps.length - 1, Math.floor(s))
     if (idx !== active) {
       steps[active]?.leave?.()
       active = idx
       if (idx >= 0) steps[idx].enter()
-      else { win.show('home') }
+      else win.show('home')
     }
     const local = idx >= 0 ? clamp(s - idx) : 0
     if (idx >= 0) steps[idx].update?.(local)
+
+    // Camera: from the hero pose into the tour, then step by step.
+    const intro = ease(clamp(y / 0.95))
+    const cam = camera(stepRect(Math.max(0, idx), idx < 0 ? 0 : local))
+    const end = steps.length + 1
+    const out = ease(clamp((y - (end - 0.75)) / 0.5))
+    const tx = lerp(0, cam.x, intro) - out * (L.compact ? 0 : L.vw * 0.2)
+    const ty = lerp(L.heroY, cam.y, intro) + out * 30
+    const sc = lerp(L.heroScale, cam.s, intro) * (1 - out * 0.22)
+    const rx = lerp(24, 0, ease(clamp(y / 0.8)))
+    wrap.style.transform = `translate3d(${tx}px, ${ty}px, 0) scale(${sc}) rotateX(${rx}deg) rotateY(${out * (L.compact ? 0 : 14)}deg)`
+    wrap.style.opacity = String(1 - out * (L.compact ? 0.85 : 0.7))
+    wrap.style.filter = out > 0.01 ? `blur(${out * 2}px)` : ''
+    heroCopy.style.transform = `translate3d(0, ${-y * L.vh * 0.45}px, 0)`
+    heroCopy.style.opacity = String(1 - clamp(y / 0.45))
+    heroCopy.style.pointerEvents = y > 0.3 ? 'none' : ''
+    wall.style.opacity = String(0.5 * (1 - clamp(y / 0.7)))
+    // Compact: the camera looks through a rounded viewport above the copy.
+    if (L.compact) {
+      const a = L.area, k = intro * (1 - out)
+      viewport.style.clipPath = `inset(${lerp(0, a.y, k)}px ${lerp(0, L.vw - a.x - a.w, k)}px ${lerp(0, L.vh - a.y - a.h, k)}px ${lerp(0, a.x, k)}px round ${lerp(0, 18, k)}px)`
+    } else viewport.style.clipPath = ''
+    updateCursor(idx, local)
+
     copies.forEach((c, i) => {
-      // Each block scrolls with the page: in from below, through the middle while its step
-      // plays, out over the top. The last one settles in the middle.
+      // Each block scrolls with the page: in from below, through its spot while its step
+      // plays, out over the top. The last one settles.
       let d = s - i
       if (i === steps.length - 1) d = Math.min(d, 0.5)
-      const travel = L.mobile ? 0.32 : 0.9
-      const pos = (0.5 - d) * travel // viewport heights from centre
+      const travel = L.compact ? 0.34 : 0.9
+      const pos = (0.5 - d) * travel
       const vis = clamp((travel * 0.44 - Math.abs(pos)) / (travel * 0.2))
       c.style.opacity = String(vis)
-      c.style.transform = L.mobile
-        ? `translate3d(0, ${pos * L.vh}px, 0)`
-        : `translate3d(0, calc(-50% + ${pos * L.vh}px), 0)`
+      c.style.transform = L.compact ? `translate3d(0, ${pos * L.vh}px, 0)` : `translate3d(0, calc(-50% + ${pos * L.vh}px), 0)`
       c.style.pointerEvents = vis > 0.5 ? 'auto' : 'none'
     })
     progress.style.opacity = String(clamp((y - 0.9) / 0.2) * (1 - clamp((y - end + 0.1) / 0.3)))
@@ -277,21 +392,24 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
     menubar.style.opacity = String(out)
     const m1 = ease(clamp((y - (end - 0.55)) / 0.4))
     const m2 = ease(clamp((y - (end - 0.45)) / 0.4))
-    const miniScale = L.mobile ? 0.7 : Math.min(1.1, L.vh / 760)
+    const phone = L.vw < 700
+    const miniScale = L.compact ? Math.min(0.9, (L.vh * 0.42) / 340, (L.vw * 0.5) / 340) : Math.min(1.1, L.vh / 760)
     mini.style.opacity = String(m1)
-    mini.style.left = `${L.mobile ? L.vw * 0.08 : L.vw * 0.5}px`
-    mini.style.top = `${L.mobile ? L.vh * 0.16 : L.vh * 0.36}px`
+    mini.style.left = `${L.compact ? L.vw * 0.05 : L.vw * 0.5}px`
+    mini.style.top = `${L.compact ? L.vh * (phone ? 0.2 : 0.16) : L.vh * 0.36}px`
     mini.style.transform = `translate3d(0, ${(1 - m1) * 60}px, 0) scale(${miniScale * (0.9 + m1 * 0.1)}) rotate(${(1 - m1) * -4}deg)`
+    mini.style.transformOrigin = '0 0'
     menu.style.opacity = String(m2)
-    menu.style.right = `${L.mobile ? 12 : L.vw * 0.06}px`
+    menu.style.right = `${L.compact ? L.vw * 0.04 : L.vw * 0.06}px`
     menu.style.top = '96px'
-    menu.style.transform = `translate3d(0, ${(1 - m2) * -16}px, 0) scale(${(L.mobile ? 0.8 : Math.min(1.15, L.vh / 760)) * (0.96 + m2 * 0.04)})`
+    menu.style.transform = `translate3d(0, ${(1 - m2) * -16}px, 0) scale(${(L.compact ? Math.min(0.85, (L.vw * 0.5) / 300) : Math.min(1.15, L.vh / 760)) * (0.96 + m2 * 0.04)})`
     menu.style.transformOrigin = '100% 0'
   }
 
   ScrollTrigger.create({
     trigger: '.tour', start: 'top top', end: 'bottom bottom',
     onUpdate: (self) => apply(self.progress * ((steps.length * 100 + 240 - 100) / 100)),
+    onRefresh: (self) => apply(self.progress * ((steps.length * 100 + 240 - 100) / 100)),
   })
   apply(0)
 }

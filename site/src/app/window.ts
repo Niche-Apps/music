@@ -1,7 +1,7 @@
 import { icon } from './icons'
 import { type Album, type Artist, type Library, type Track, fmt, media, seeded } from '../data'
 
-export type View = 'home' | 'browse' | 'artists' | 'album' | 'songs' | 'nowplaying'
+export type View = 'home' | 'browse' | 'artists' | 'album' | 'songs' | 'nowplaying' | 'create'
 export type Panel = 'none' | 'queue'
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
@@ -59,7 +59,8 @@ export class AppWindow {
       </aside>
       <div class="content"></div>
       <header class="toolbar"></header>
-      <div class="overlay"></div>`
+      <div class="overlay"></div>
+      <div class="cursor"><svg viewBox="0 0 28 28"><path d="M6 3.5v18.2l4.6-4.3 3.1 7.1 3.3-1.4-3.1-7h6.4Z" fill="#000" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg><i class="ripple"></i></div>`
     this.nav = this.el.querySelector('.nav')!
     this.content = this.el.querySelector('.content')!
     this.toolbar = this.el.querySelector('.toolbar')!
@@ -139,6 +140,7 @@ export class AppWindow {
       case 'album': page.innerHTML = this.albumHTML(arg ?? this.cast.album); back = true; selected = 'albums'; break
       case 'songs': page.innerHTML = this.songsHTML(); break
       case 'nowplaying': page.innerHTML = this.nowPlayingHTML(); break
+      case 'create': page.innerHTML = this.createHTML(); break
     }
     this.renderNav(selected)
     this.renderToolbar({ back, overImage })
@@ -238,11 +240,11 @@ export class AppWindow {
           <button class="bigplay ${recorded.length ? 'red' : ''}">${glyph(icon.play, '')}</button>
           <div class="names"><h1>${esc(a.name)}</h1><p>${esc(a.tagline)}</p></div>
           <button class="round">${glyph(icon.star, '')}</button>
-          <button class="pill">${glyph(icon.disc, '')}New Release</button>
+          <button class="pill nr">${glyph(icon.disc, '')}New Release</button>
           <button class="pill">${glyph(icon.sparkles, '')}More Like This</button>
         </div></div>
       <div class="pad">${top}
-        <section class="shelf"><div class="shelf-head"><h2>Albums</h2></div><div class="row-of">${full.slice(0, 5).map((al) => `<div class="card"><img class="art" src="${media.cover(al.id)}" alt="" loading="lazy"><b>${esc(al.title)}</b><small>${al.year}</small></div>`).join('')}</div></section>
+        <section class="shelf"><div class="shelf-head"><h2>Albums</h2></div><div class="row-of">${full.slice(0, 5).map((al) => `<div class="card" data-album="${al.id}"><img class="art" src="${media.cover(al.id)}" alt="" loading="lazy"><b>${esc(al.title)}</b><small>${al.year}</small></div>`).join('')}</div></section>
         ${singles.length ? `<section class="shelf"><div class="shelf-head"><h2>Singles &amp; EPs</h2></div><div class="row-of">${singles.slice(0, 5).map((al) => `<div class="card"><img class="art" src="${media.cover(al.id)}" alt="" loading="lazy"><b>${esc(al.title)}</b><small>${al.year}</small></div>`).join('')}</div></section>` : ''}
       </div></div>`
   }
@@ -313,6 +315,83 @@ export class AppWindow {
       <div class="right"><div class="lyrics">${lyrics}</div><div class="studio-host"></div></div></div>`
   }
 
+  private createHTML() {
+    const ideas = ['Late-night jazz from a fictional 1960s Lisbon', 'Dream pop recorded in a lighthouse', 'Afrobeat bands that only play weddings',
+      'Synthwave for driving through rain', 'Folk songs from a mining town', '90s Tokyo city pop', 'Gospel choirs meets drum and bass', 'Desert blues, cassette only']
+    const loved = this.lib.artists.filter((a) => (this.lib.byArtist.get(a.id) ?? []).some((al) => al.tracks.some((t) => t.ready))).slice(0, 11)
+    return `<div class="scroller"><div class="create">
+      <h1 class="page-title" style="padding-top:86px">Create</h1>
+      <div class="page-sub">Write new artists into your library. Each one arrives with a story, a discography and cover art.</div>
+      <div class="panel">
+        <b class="ph">Describe what you want to hear</b>
+        <div class="describe"><span class="typed"></span><span class="placeholder">Describe a sound, a scene, an era…</span></div>
+        <div class="ideas">${ideas.map((i) => `<span>${esc(i)}</span>`).join('')}</div>
+        <div class="foot"><b>4 artists</b><span class="stepper">⌃<br>⌄</span><small>Usually 2–4 minutes per artist</small><span class="spacer"></span><button class="create-btn">${glyph(icon.sparkles, '')}Create</button></div>
+      </div>
+      <div class="panel">
+        <div class="ph2">${glyph(icon.disc)}<div><b>New music from artists you love</b><small>A new album that continues their story, with tracklist, liner notes and cover.</small></div></div>
+        <div class="loved">${loved.map((a, i) => `<div class="${i === 0 ? 'on' : ''}"><img src="${media.artistThumb(a.id)}" alt=""><span>${esc(a.name)}</span></div>`).join('')}</div>
+        <div class="foot"><span class="brief">Optional brief for ${esc(loved[0]?.name ?? '')} — “their late-career acoustic record”</span><button class="nr2">${glyph(icon.disc, '')}New Release</button></div>
+      </div>
+    </div></div>`
+  }
+
+  /** Create page: the describe field, typed out by the tour. */
+  typeCreate(text: string, pressed = false) {
+    const box = this.content.querySelector('.create .describe')
+    if (!box) return
+    box.querySelector('.typed')!.textContent = text
+    box.querySelector<HTMLElement>('.placeholder')!.style.display = text ? 'none' : ''
+    box.classList.toggle('focus', text.length > 0)
+    this.content.querySelector('.create-btn')?.classList.toggle('ready', text.length > 0)
+    this.content.querySelector('.create-btn')?.classList.toggle('busy', pressed)
+  }
+
+  /** Artist page: the New Release popover (brief text), or closed. */
+  newRelease(state: { brief: string } | null) {
+    const page = this.content.querySelector('.artist-detail > div:last-child') ?? this.content
+    page.querySelector('.nr-pop')?.remove()
+    const pill = page.querySelector<HTMLElement>('.pill.nr')
+    pill?.classList.toggle('active', !!state)
+    if (!state || !pill) return
+    const a = this.lib.artist(this.cast.artists[this.cast.artists.length - 1])
+    const pop = document.createElement('div')
+    pop.className = 'nr-pop'
+    pop.innerHTML = `<b>New release from ${esc(a.name)}</b><small>Their next chapter: a new album with tracklist, liner notes and cover. Takes a minute or two.</small>
+      <div class="field ${state.brief ? 'focus' : ''}">${state.brief ? esc(state.brief) + '<i class="caret"></i>' : '<span>Optional brief — “a stripped-back winter record”</span>'}</div>
+      <div class="row"><span>Cancel</span><span class="go">Write It</span></div>`
+    const banner = page.querySelector<HTMLElement>('.banner')!
+    banner.appendChild(pop)
+    pop.style.left = `${pill.offsetLeft + pill.offsetWidth / 2 - 170 + 32}px`
+  }
+
+  // ---------- Cursor ----------
+
+  /** Centre of an element in window points, or null if it isn't on screen. */
+  point(selector: string): { x: number; y: number } | null {
+    const el = this.el.querySelector(selector)
+    if (!el) return null
+    const r = el.getBoundingClientRect()
+    const w = this.el.getBoundingClientRect()
+    if (!r.width || !w.width) return null
+    const s = w.width / 1440
+    return { x: (r.left + r.width / 2 - w.left) / s, y: (r.top + r.height / 2 - w.top) / s }
+  }
+
+  cursor(p: { x: number; y: number } | null, pressed = false) {
+    const c = this.el.querySelector<HTMLElement>('.cursor')!
+    if (!p) { c.style.opacity = '0'; return }
+    c.style.opacity = '1'
+    c.style.transform = `translate3d(${p.x - 6}px, ${p.y - 4}px, 0) scale(${pressed ? 0.86 : 1})`
+  }
+
+  clickRipple() {
+    const r = this.el.querySelector<HTMLElement>('.cursor .ripple')!
+    r.classList.remove('go')
+    void r.offsetWidth
+    r.classList.add('go')
+  }
+
   // ---------- Live state for the tour ----------
 
   /** Artists view: select the n-th artist in the list, scrolling the list to keep it in view. */
@@ -324,7 +403,6 @@ export class AppWindow {
     rows.forEach((r, k) => { r.classList.toggle('selected', k === i); r.classList.toggle('before-selected', k === i - 1) })
     const list = page.querySelector<HTMLElement>('.artist-list .rows')!
     const offset = Math.max(0, i * 44 - 300)
-    list.style.transition = 'transform .6s cubic-bezier(.2,.8,.2,1)'
     list.style.transform = `translateY(${-offset}px)`
     const detail = page.querySelector<HTMLElement>('.artist-detail')!
     const next = document.createElement('div')

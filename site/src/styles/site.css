@@ -183,16 +183,23 @@ section.listen, section.open { padding: clamp(80px, 14vh, 160px) max(20px, 5vw);
 /* ---------- Reveal helpers ---------- */
 .reveal { opacity: 0; transform: translateY(30px); }
 
+/* ---------- Compact tour (narrow, tall and phone screens) ---------- */
+.viewport { position: absolute; inset: 0; z-index: 4; }
+.stage.compact .steps { top: var(--copy-top, 56vh); bottom: 44px; left: 5vw; right: 5vw; width: auto; }
+.stage.compact .step-copy { top: 0; transform: none; max-width: 640px; }
+.stage.compact .step-copy h3 { font-size: clamp(24px, 4.4vw, 38px); }
+.stage.compact .step-copy p { font-size: clamp(14.5px, 2vw, 17px); margin-top: 10px; line-height: 1.5; }
+.stage.compact .step-copy .eyebrow { margin-bottom: 8px; }
+.stage.compact .tour-progress { left: 5vw; bottom: 18px; }
+@media (max-width: 700px) {
+  .stage.compact .step-copy .chips { display: none; }
+  .stage.compact .step-copy h3 { font-size: 25px; }
+}
+
 /* ---------- Small screens ---------- */
 @media (max-width: 900px) {
   .topnav nav { display: none; }
-  .steps { left: 20px; right: 20px; width: auto; top: auto; bottom: 0; height: 42vh; }
-  .step-copy { top: auto; bottom: 28px; transform: none; }
-  .step-copy h3 { font-size: 26px; }
-  .step-copy p { font-size: 14.5px; margin-top: 10px; }
-  .step-copy .chips { display: none; }
-  .tour-progress { left: 20px; bottom: 12px; }
-  .how canvas.field { inset: 0; width: 100%; opacity: .55; }
+  .how canvas.field { left: 0; width: 100%; opacity: .55; }
   .how-copy { left: 20px; right: 20px; width: auto; }
   .how-index { display: none; }
   .numbers { grid-template-columns: repeat(2, 1fr); }
