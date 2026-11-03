@@ -216,7 +216,7 @@ final class RecordingQueue {
     static let warmStartAlbums = 6
 
     /// When idle (and enabled in Settings), records the opening song of albums the listener is likely
-    /// to reach for — favourites first, then their core taste — so Play starts instantly.
+    /// to reach for — favorites first, then their core taste — so Play starts instantly.
     private func idleCandidate() -> ID? {
         let failed = Array(failures.keys)
         return try? services.db.reader.read { db in

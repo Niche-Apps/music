@@ -20,7 +20,7 @@ body { margin: 0; color: var(--ink); background: var(--bg); font-family: var(--t
 a { color: inherit; text-decoration: none; }
 code { font-family: var(--mono); font-size: 0.92em; background: rgba(255,255,255,.07); padding: 1px 5px; border-radius: 5px; }
 .accent { background: linear-gradient(92deg, #ff5d7a 0%, #ff9a6b 45%, #ffc8d4 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
-/* Gradient text is clipped to its box; extend the box below the baseline so descenders (g, y) keep their colour. */
+/* Gradient text is clipped to its box; extend the box below the baseline so descenders (g, y) keep their color. */
 .accent { padding-bottom: 0.16em; margin-bottom: -0.16em; }
 
 /* ---------- Nav ---------- */
@@ -55,10 +55,12 @@ code { font-family: var(--mono); font-size: 0.92em; background: rgba(255,255,255
 .tour { position: relative; height: calc(var(--tour-steps, 10) * 100vh + 195vh); }
 .stage { position: sticky; top: 0; height: 100vh; overflow: hidden; }
 .wall { position: absolute; inset: -12% -10% -25% -10%; display: flex; flex-direction: column; gap: 18px; transform: perspective(1400px) rotateX(18deg) rotateZ(-8deg) scale(1.15); transform-origin: 50% 30%; opacity: .5; }
-.wall .lane { display: flex; gap: 18px; width: max-content; animation: lane var(--d, 120s) linear infinite; }
+.wall .lane { display: flex; gap: 18px; width: max-content; animation: lane var(--d, 120s) linear infinite; will-change: transform; }
 .wall .lane:nth-child(even) { animation-direction: reverse; }
 .wall .lane img { width: var(--cover, 170px); aspect-ratio: 1; object-fit: cover; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
 @keyframes lane { to { transform: translateX(-50%); } }
+.wall.off, .hero-copy.off { visibility: hidden; content-visibility: hidden; }
+.wall.off .lane { animation-play-state: paused; will-change: auto; }
 .wall-fade { position: absolute; inset: 0; background:
   radial-gradient(70% 55% at 50% 38%, rgba(8,9,13,.55) 0%, rgba(8,9,13,.9) 60%, var(--bg) 100%),
   linear-gradient(180deg, rgba(8,9,13,.7) 0%, transparent 30%, transparent 60%, var(--bg) 100%); }
@@ -112,7 +114,7 @@ section.listen, section.open { padding: clamp(80px, 14vh, 160px) max(20px, 5vw);
 .clip .meta small { font-size: 13px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .clip .meta .genre { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); margin-top: 3px; }
 .clip canvas { width: 100%; height: 34px; margin-top: auto; display: block; }
-.clip .cov .pp b svg { margin-left: 2px; } /* optical centre for the play triangle */
+.clip .cov .pp b svg { margin-left: 2px; } /* optical center for the play triangle */
 .clip .cov .pp b[data-state="pause"] svg { margin-left: 0; }
 .step-copy .clip.in-copy { margin-top: 22px; max-width: 420px; pointer-events: auto; background: rgba(255,255,255,.05); }
 .step-copy .clip.in-copy .cov .pp { opacity: 1; background: rgba(0,0,0,.18); }
@@ -168,7 +170,7 @@ section.listen, section.open { padding: clamp(80px, 14vh, 160px) max(20px, 5vw);
 
 /* ---------- Final ---------- */
 .final { position: relative; min-height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; text-align: center; }
-.final-wall { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; padding: 10px; opacity: .22; filter: saturate(1.1); }
+.final-wall { will-change: transform; position: absolute; inset: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; padding: 10px; opacity: .22; filter: saturate(1.1); }
 .final-wall img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; }
 .final::after { content: ''; position: absolute; inset: 0; background: radial-gradient(55% 55% at 50% 50%, rgba(8,9,13,.6), var(--bg) 100%); }
 .final-copy { position: relative; z-index: 2; padding: 0 24px; display: flex; flex-direction: column; align-items: center; }
@@ -195,7 +197,7 @@ section.listen, section.open { padding: clamp(80px, 14vh, 160px) max(20px, 5vw);
 
 /* ---------- Compact tour (narrow, tall and phone screens) ---------- */
 .viewport { position: absolute; inset: 0; z-index: 4; }
-.stage.compact .steps { top: var(--copy-top, 56vh); bottom: 44px; left: 5vw; right: 5vw; width: auto; }
+.stage.compact .steps { top: var(--copy-top, 56vh); bottom: 44px; left: 5vw; right: 5vw; width: auto; overflow: hidden; }
 .stage.compact .step-copy { top: 0; transform: none; max-width: 640px; }
 .stage.compact .step-copy h3 { font-size: clamp(24px, 4.4vw, 38px); }
 .stage.compact .step-copy p { font-size: clamp(14.5px, 2vw, 17px); margin-top: 10px; line-height: 1.5; }
@@ -218,6 +220,13 @@ section.listen, section.open { padding: clamp(80px, 14vh, 160px) max(20px, 5vw);
   .open-grid { grid-template-columns: 1fr; }
   .foot { flex-direction: column; align-items: flex-start; }
   .dock .inner { min-width: 0; width: calc(100vw - 32px); }
+}
+/* Phones and touch devices: no live blurs over scrolling content, flat cover wall. */
+.wall.flat { transform: rotate(-8deg) scale(1.2); inset: -5% -20%; }
+@media (max-width: 1099px), (hover: none) {
+  .topnav.solid { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(10, 11, 16, 0.94); }
+  .dock .inner { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(28, 30, 38, 0.97); }
+  .btn-ghost { backdrop-filter: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .wall .lane { animation: none; }

@@ -17,7 +17,7 @@ let shareLog = Logger(subsystem: "com.standardmusic", category: "sharing")
 /// Everything needed to keep the artist alive travels with it: the hidden soul and voice (so new
 /// albums and recordings on the recipient's Mac stay in character), and each song's lyrics, style
 /// and seed (so unrecorded songs are recorded on the recipient's Mac just as they would have been
-/// on the sender's). Listening history and favourites stay private and never leave the Mac.
+/// on the sender's). Listening history and favorites stay private and never leave the Mac.
 public struct ShareManifest: Codable, Sendable {
     public static let currentFormat = 1
     public static let fileExtension = "standardalbum"
@@ -286,7 +286,7 @@ public struct ShareBundler: Sendable {
     }
 
     /// Adds a previewed share to the library. Importing the same album twice is safe: existing
-    /// items keep the listener's own favourites and history, and only gain what they were missing
+    /// items keep the listener's own favorites and history, and only gain what they were missing
     /// (new albums, recordings for songs not yet recorded here, lyrics).
     public func importShare(_ manifest: ShareManifest, from folder: URL) throws -> ShareImportResult {
         let fm = FileManager.default

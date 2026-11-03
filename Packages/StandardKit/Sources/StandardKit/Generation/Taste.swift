@@ -81,12 +81,12 @@ public struct TasteProfile: Codable, Sendable, Hashable {
         if !coreGenres.isEmpty { lines.append("Core genres: \(coreGenres.joined(separator: ", "))") }
         if !adjacentGenres.isEmpty { lines.append("Adjacent genres: \(adjacentGenres.joined(separator: ", "))") }
         if !descriptors.isEmpty { lines.append("Sonic preferences: \(descriptors.joined(separator: ", "))") }
-        if !eras.isEmpty { lines.append("Favourite eras: \(eras.joined(separator: ", "))") }
+        if !eras.isEmpty { lines.append("Favorite eras: \(eras.joined(separator: ", "))") }
         if !notes.isEmpty { lines.append("In their own words: \(notes)") }
         let loved = signals.filter { $0.kind != .skip && $0.kind != .unfavorite }.suffix(25)
         if !loved.isEmpty {
             lines.append(
-                "Songs/artists they've favourited in this app: "
+                "Songs/artists they've favorited in this app: "
                     + loved.map { "\($0.title) by \($0.artistName) [\($0.styleTags.isEmpty ? $0.genres.joined(separator: ", ") : $0.styleTags)]" }
                     .joined(separator: "; "))
         }

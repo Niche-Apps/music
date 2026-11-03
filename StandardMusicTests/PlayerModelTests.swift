@@ -3,7 +3,7 @@ import StandardKit
 import Testing
 @testable import Standard_Music
 
-/// Player behaviour against a real library in the throwaway `SM_HOME` set by the test scheme.
+/// Player behavior against a real library in the throwaway `SM_HOME` set by the test scheme.
 /// No one is signed in to ChatGPT there, so every recording attempt fails at the lyrics step, which
 /// is exactly the failure path the player has to survive.
 @MainActor

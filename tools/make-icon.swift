@@ -1,7 +1,7 @@
 // Renders the app icon at 1024 px and writes every size into the asset catalog.
 //   swift tools/make-icon.swift [out.png]
 // A near-black squircle with a low oxblood glow and a single record: fine grooves, a soft sheen,
-// and an accent-coloured label — the same palette as the app's dark surfaces.
+// and an accent-colored label — the same palette as the app's dark surfaces.
 import AppKit
 
 let size: CGFloat = 1024
@@ -14,7 +14,7 @@ let rgb = CGColorSpace(name: CGColorSpace.sRGB)!
 
 func color(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, _ a: CGFloat = 1) -> CGColor { CGColor(colorSpace: rgb, components: [r, g, b, a])! }
 
-// macOS icon grid: 824 pt body centred on a 1024 canvas, continuous corners.
+// macOS icon grid: 824 pt body centered on a 1024 canvas, continuous corners.
 let body = CGRect(x: 100, y: 100, width: 824, height: 824)
 let shape = NSBezierPath(roundedRect: body, xRadius: 185, yRadius: 185).cgPath
 

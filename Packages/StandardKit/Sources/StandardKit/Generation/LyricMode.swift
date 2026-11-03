@@ -90,7 +90,7 @@ public enum LyricMode {
     ]
 
     /// The register for one song, stable for a given album and track number so retries agree.
-    /// Neighbouring tracks on an album get different registers.
+    /// Neighboring tracks on an album get different registers.
     public static func brief(albumID: String, trackNumber: Int, trackCount: Int, genres: [String]) -> String {
         let count = max(trackCount, trackNumber, 1)
         let picks = assign(count: count, genres: genres, seed: stableHash(albumID))

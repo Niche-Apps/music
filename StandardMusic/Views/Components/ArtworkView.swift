@@ -97,7 +97,7 @@ struct ArtworkView: View {
         }
     }
 
-    /// Stable per-id colours (String.hashValue changes every launch).
+    /// Stable per-id colors (String.hashValue changes every launch).
     static func seeded(_ id: String) -> [Color] {
         let hash = id.utf8.reduce(UInt64(5381)) { ($0 &* 33) ^ UInt64($1) }
         let h = Double(hash % 360) / 360

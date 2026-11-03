@@ -45,6 +45,7 @@ export class AppWindow {
   current: NowPlaying
   playing = false
   private lyricsLines: HTMLElement[] = []
+  private lineTops: number[] = []
 
   constructor(readonly lib: Library, readonly cast: Cast) {
     this.el = document.createElement('div')
@@ -73,6 +74,26 @@ export class AppWindow {
     this.buildLayers()
   }
 
+  /** Downloads and decodes the window's images in idle time, so no screen hitches on first sight. */
+  warmUp() {
+    // Lay out every hidden screen once (still invisible), so content-visibility caches its rendering
+    // and the first time the tour shows it costs nothing.
+    const hidden = [...this.el.querySelectorAll<HTMLElement>('.page, .detail')].filter((e) => e.style.contentVisibility === 'hidden')
+    hidden.forEach((e) => (e.style.contentVisibility = 'visible'))
+    this.newRelease(0)
+    requestAnimationFrame(() => requestAnimationFrame(() => hidden.forEach((e) => { if (e.style.visibility === 'hidden') e.style.contentVisibility = 'hidden' })))
+    const imgs = [...this.el.querySelectorAll<HTMLImageElement>('img')]
+    let i = 0
+    const idle = (cb: () => void) => ('requestIdleCallback' in window ? requestIdleCallback(cb, { timeout: 400 }) : setTimeout(cb, 30))
+    const next = () => {
+      const batch = imgs.slice(i, i + 6)
+      i += 6
+      if (!batch.length) return
+      Promise.all(batch.map((img) => { img.loading = 'eager'; return img.decode().catch(() => {}) })).then(() => idle(next))
+    }
+    idle(next)
+  }
+
   // ---------- Layers ----------
 
   /** Every screen the tour visits exists at once; the tour blends between them by scroll. */
@@ -84,6 +105,7 @@ export class AppWindow {
       page.className = `page layer-${key}`
       page.dataset.layer = key
       page.innerHTML = html
+      page.style.contentVisibility = 'hidden'
       page.style.visibility = 'hidden'
       ;(root ? this.el : this.content).appendChild(page)
       this.pages.set(key, page)
@@ -108,8 +130,11 @@ export class AppWindow {
     for (const key of order) if ((weights.get(key) ?? 0) > 0.001) top = key
     for (const [key, page] of this.pages) {
       const w = weights.get(key) ?? 0
-      if (w <= 0.001) { if (page.style.visibility !== 'hidden') page.style.visibility = 'hidden'; continue }
-      page.style.visibility = 'visible'
+      if (w <= 0.001) {
+        if (page.style.visibility !== 'hidden') { page.style.visibility = 'hidden'; page.style.contentVisibility = 'hidden' }
+        continue
+      }
+      if (page.style.visibility === 'hidden') { page.style.visibility = ''; page.style.contentVisibility = '' }
       page.style.zIndex = String(key === 'np' ? 20 : order.indexOf(key) + 1)
       if (key === 'taste') {
         page.style.zIndex = '22'
@@ -144,13 +169,19 @@ export class AppWindow {
   }
 
   /** Sidebar selection: the highlight glides between items by weight. */
+  private navTops = new Map<string, number>()
+  private lastNav = ''
   setNav(weights: Map<string, number>) {
+    const sig = [...weights].map(([k, w]) => `${k}:${w.toFixed(4)}`).join()
+    if (sig === this.lastNav) return
+    this.lastNav = sig
     const pill = this.nav.querySelector<HTMLElement>('.sel')!
+    if (!this.navTops.size) this.nav.querySelectorAll<HTMLElement>('.item[data-key]').forEach((i) => this.navTops.set(i.dataset.key!, i.offsetTop))
     let top = 0, total = 0, best = '', bw = 0
     for (const [key, w] of weights) {
-      const item = this.nav.querySelector<HTMLElement>(`.item[data-key="${key}"]`)
-      if (!item || w <= 0) continue
-      top += item.offsetTop * w; total += w
+      const y = this.navTops.get(key)
+      if (y == null || w <= 0) continue
+      top += y * w; total += w
       if (w > bw) { bw = w; best = key }
     }
     if (!total) { pill.style.opacity = '0'; return }
@@ -300,23 +331,31 @@ export class AppWindow {
   }
 
   /** Artists layer: f runs 0…n-1 across the cast; the selection glides, banners crossfade. */
+  private rowTops = new Map<string, number>()
+  private lastFocus = -1
   setArtistFocus(f: number) {
+    if (Math.abs(f - this.lastFocus) < 1e-4) return
+    this.lastFocus = f
     const page = this.pages.get('artists')!
+    if (page.style.visibility === 'hidden') { this.lastFocus = -1; return }
     const ids = this.cast.artists
     const i = Math.max(0, Math.min(ids.length - 1, Math.floor(f)))
     const j = Math.min(ids.length - 1, i + 1)
     // Hold on each artist, then move to the next in the last third of the segment.
     const k = ids.length > 1 ? smooth((f - i - 0.62) / 0.3) : 0
     const rows = page.querySelector<HTMLElement>('.rows')!
+    if (!this.rowTops.size) rows.querySelectorAll<HTMLElement>('.artist-row').forEach((r) => this.rowTops.set(r.dataset.artist!, r.offsetTop))
     const rowA = rows.querySelector<HTMLElement>(`.artist-row[data-artist="${ids[i]}"]`)!
     const rowB = rows.querySelector<HTMLElement>(`.artist-row[data-artist="${ids[j]}"]`)!
-    const y = rowA.offsetTop + (rowB.offsetTop - rowA.offsetTop) * k
+    const ya = this.rowTops.get(ids[i])!, yb = this.rowTops.get(ids[j])!
+    const y = ya + (yb - ya) * k
     rows.querySelector<HTMLElement>('.row-sel')!.style.transform = `translate3d(0, ${y}px, 0)`
     rows.style.transform = `translate3d(0, ${-Math.max(0, y - 280)}px, 0)`
     rows.querySelectorAll('.artist-row').forEach((r) => r.classList.toggle('selected', r === (k < 0.5 ? rowA : rowB)))
     page.querySelectorAll<HTMLElement>('.detail').forEach((d) => {
       const w = d.dataset.artist === ids[i] ? (i === j ? 1 : 1 - k) : d.dataset.artist === ids[j] ? k : 0
-      d.style.visibility = w > 0.001 ? 'inherit' : 'hidden'
+      const show = w > 0.001
+      if ((d.style.visibility !== 'hidden') !== show) { d.style.visibility = show ? '' : 'hidden'; d.style.contentVisibility = show ? '' : 'hidden' }
       d.style.opacity = String(d.dataset.artist === ids[j] && i !== j ? k : 1)
       d.style.zIndex = d.dataset.artist === ids[j] ? '2' : '1'
       const img = d.querySelector<HTMLElement>('.banner img')
@@ -514,7 +553,7 @@ export class AppWindow {
 
   // ---------- Cursor ----------
 
-  /** Centre of an element in window points, or null if it isn't on screen. */
+  /** Center of an element in window points, or null if it isn't on screen. */
   point(selector: string): { x: number; y: number } | null {
     const el = this.el.querySelector(selector)
     if (!el) return null
@@ -555,7 +594,8 @@ export class AppWindow {
   scrollFraction(f: number, layer = 'home') {
     const s = this.scroller(layer)
     if (!s) return
-    const max = Math.max(0, s.scrollHeight + 32 - (s.parentElement?.clientHeight ?? 900))
+    if (!s.dataset.max || s.dataset.max === '0') s.dataset.max = String(Math.max(0, s.scrollHeight + 32 - (s.parentElement?.clientHeight ?? 900)))
+    const max = Number(s.dataset.max)
     s.style.transform = `translate3d(0, ${-Math.round(Math.max(0, Math.min(1, f)) * max)}px, 0)`
   }
 
@@ -569,8 +609,9 @@ export class AppWindow {
       l.style.opacity = String(k < f ? Math.max(0.5, 1 - d * 0.5) : Math.max(0.3, 1 - d * 0.7))
       l.style.filter = d < 0.6 ? 'none' : 'blur(0.6px)'
     })
-    const a = lines[Math.floor(f)], b = lines[Math.min(lines.length - 1, Math.floor(f) + 1)]
-    const y = a.offsetTop + (b.offsetTop - a.offsetTop) * (f - Math.floor(f))
+    if (!this.lineTops.length || this.lineTops.every((v) => v === 0)) this.lineTops = lines.map((l) => l.offsetTop)
+    const a = this.lineTops[Math.floor(f)], b = this.lineTops[Math.min(lines.length - 1, Math.floor(f) + 1)]
+    const y = a + (b - a) * (f - Math.floor(f))
     const box = this.pages.get('np')?.querySelector<HTMLElement>('.lyrics')
     if (box) box.style.transform = `translate3d(0, ${360 - y}px, 0)`
   }
@@ -665,7 +706,7 @@ export interface Cast {
 
 export function chooseCast(lib: Library): Cast {
   const byName = (n: string) => lib.artists.find((a) => a.name === n)?.id
-  // The album with the most recorded songs is the one the tour plays from (preferring a favourite).
+  // The album with the most recorded songs is the one the tour plays from (preferring a favorite).
   const ranked = [...lib.albums].sort((a, b) => b.tracks.filter((t) => t.ready).length - a.tracks.filter((t) => t.ready).length)
   const album = ranked.find((a) => a.title === 'Good Hands, Bad Timing') ?? ranked[0]
   const withLyrics = album.tracks.find((t) => t.title === 'Already Spent' && t.clip) ?? album.tracks.find((t) => t.lyrics && t.clip)

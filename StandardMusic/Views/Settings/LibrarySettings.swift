@@ -58,9 +58,9 @@ struct LibrarySettings: View {
                             .font(.callout)
                             .foregroundStyle(.tint)
                     }
-                    let favourites = model.taste.signals.count
-                    if favourites > 0 {
-                        Text("Shaped by your answers and \(favourites) favourite\(favourites == 1 ? "" : "s").")
+                    let favorites = model.taste.signals.count
+                    if favorites > 0 {
+                        Text("Shaped by your answers and \(favorites) favorite\(favorites == 1 ? "" : "s").")
                             .font(.caption)
                             .foregroundStyle(.tertiary)
                     }

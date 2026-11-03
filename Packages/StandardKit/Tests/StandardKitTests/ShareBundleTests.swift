@@ -72,7 +72,7 @@ import Testing
         let imported = try #require(try recipient.db.reader.read { try Artist.fetchOne($0, key: artist.id) })
         #expect(imported.soul == "secret soul")
         #expect(imported.voice == "male falsetto vocal, nasal")
-        #expect(imported.isFavorite == false)  // the sender's favourites stay private
+        #expect(imported.isFavorite == false)  // the sender's favorites stay private
         #expect(imported.imagePath != nil)
         let recorded = try #require(try recipient.db.reader.read { try Track.fetchOne($0, key: tracks[0].id) })
         #expect(recorded.isPlayable)

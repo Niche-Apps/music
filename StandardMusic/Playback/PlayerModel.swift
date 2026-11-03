@@ -454,7 +454,7 @@ final class PlayerModel {
         output.gainDB = Float(max(-10, min(6, -14 - loudness)))
     }
 
-    /// Keeps `current` fresh (favourite toggles, lyrics written, recording finished).
+    /// Keeps `current` fresh (favorite toggles, lyrics written, recording finished).
     private func observeCurrent(_ id: ID) {
         observation = ValueObservation.tracking { db in try AppDatabase.trackInfos().filter(key: id).fetchOne(db) }
             .start(in: services.db.reader, scheduling: .immediate, onError: { _ in }) { [weak self] info in

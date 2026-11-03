@@ -24,13 +24,13 @@ import Testing
         let picked = CoverDirection.assign(count: 8, genres: ["shoegaze", "dream pop"], seed: 42)
         #expect(picked.count == 8)
         #expect(Set(picked).count == 8)
-        // Even past the size of the catalogue, every release gets an approach.
+        // Even past the size of the catalog, every release gets an approach.
         #expect(CoverDirection.assign(count: 30, genres: ["metal"], seed: 7).count == 30)
     }
 }
 
 @Suite struct TasteTests {
-    @Test func favouritesReachGenerationPrompts() {
+    @Test func favoritesReachGenerationPrompts() {
         var taste = TasteProfile()
         taste.coreGenres = ["shoegaze"]
         taste.signals = [

@@ -98,9 +98,7 @@
   position: absolute; top: 0; left: 230px; right: 0; height: 52px; z-index: 4;
   border-bottom: 1px solid var(--hairline);
   background: rgba(41, 45, 56, 0.72);
-  backdrop-filter: blur(24px) saturate(1.6);
-  -webkit-backdrop-filter: blur(24px) saturate(1.6);
-}
+  -webkit-}
 .mac .toolbar.over-image { background: rgba(30, 32, 40, 0.28); border-bottom-color: rgba(255,255,255,.06); }
 .mac .capsule {
   position: absolute; top: 8px; height: 36px; border-radius: 12px; display: flex; align-items: center;
@@ -169,7 +167,7 @@
 .mac .hero-card .label b { display: block; font-size: 20px; font-weight: 700; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mac .hero-card .label p { margin: 2px 0 0; font-size: 12.5px; opacity: .9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mac .hero-card .label em { display: block; font-style: normal; font-size: 12px; opacity: .75; margin-top: 3px; }
-.mac .hero-card .play { position: absolute; right: 16px; bottom: 18px; z-index: 1; width: 46px; height: 46px; border-radius: 50%; background: rgba(255,255,255,.22); backdrop-filter: blur(10px); color: #fff; }
+.mac .hero-card .play { position: absolute; right: 16px; bottom: 18px; z-index: 1; width: 46px; height: 46px; border-radius: 50%; background: rgba(255,255,255,.22); color: #fff; }
 .mac .hero-card .play span { width: 18px; height: 18px; }
 .mac .mini-grid { display: grid; grid-template-columns: repeat(3, 250px); grid-auto-rows: 50px; column-gap: 24px; align-content: start; padding-top: 4px; }
 .mac .mini { display: flex; align-items: center; gap: 12px; }
@@ -195,15 +193,15 @@
 .mac .banner img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; transform-origin: center; }
 .mac .banner::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 45%, rgba(0,0,0,.18) 70%, rgba(0,0,0,.5) 100%); }
 .mac .banner .over { position: absolute; left: 32px; right: 32px; bottom: 26px; display: flex; align-items: flex-end; gap: 14px; z-index: 1; }
-.mac .banner .bigplay { width: 54px; height: 54px; border-radius: 50%; background: rgba(255,255,255,.16); backdrop-filter: blur(12px); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); color: #fff; flex: none; margin-bottom: 4px; }
+.mac .banner .bigplay { width: 54px; height: 54px; border-radius: 50%; background: rgba(255,255,255,.16); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); color: #fff; flex: none; margin-bottom: 4px; }
 .mac .banner .bigplay.red { background: var(--accent); }
 .mac .banner .bigplay span { width: 20px; height: 20px; margin-left: 3px; }
 .mac .banner .names { flex: 1; min-width: 0; }
 .mac .banner .names h1 { margin: 0; font-size: 44px; font-weight: 700; letter-spacing: -0.015em; line-height: 1.05; text-shadow: 0 2px 16px rgba(0,0,0,.25); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mac .banner .names p { margin: 4px 0 0; font-size: 14px; font-weight: 500; opacity: .92; }
-.mac .banner .round { width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,.14); backdrop-filter: blur(12px); box-shadow: inset 0 0 0 1px rgba(255,255,255,.1); flex: none; margin-bottom: 8px; }
+.mac .banner .round { width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,.14); box-shadow: inset 0 0 0 1px rgba(255,255,255,.1); flex: none; margin-bottom: 8px; }
 .mac .banner .round span { width: 19px; height: 19px; }
-.mac .banner .pill { height: 30px; padding: 0 14px; border-radius: 15px; gap: 7px; font-size: 13px; font-weight: 500; background: rgba(255,255,255,.14); backdrop-filter: blur(12px); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); flex: none; margin-bottom: 13px; }
+.mac .banner .pill { background-color: rgba(40,42,50,.35); height: 30px; padding: 0 14px; border-radius: 15px; gap: 7px; font-size: 13px; font-weight: 500; background: rgba(255,255,255,.14); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); flex: none; margin-bottom: 13px; }
 .mac .banner .pill span { width: 14px; height: 14px; }
 .mac .top-songs { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 48px; column-gap: 22px; margin-top: 12px; }
 .mac .note { display: flex; gap: 12px; align-items: flex-start; margin-top: 40px; }
@@ -374,8 +372,7 @@
 .miniwin .glass .ctl span { width: 20px; height: 20px; display: block; }
 .miniwin .glass .ctl span.big { width: 26px; height: 26px; }
 .menuextra { width: 300px; border-radius: 12px; padding: 6px; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; font-size: 13px;
-  background: rgba(46, 49, 58, .86); backdrop-filter: blur(30px) saturate(1.6); -webkit-backdrop-filter: blur(30px) saturate(1.6);
-  box-shadow: 0 0 0 .5px rgba(0,0,0,.8), inset 0 0 0 1px rgba(255,255,255,.1), 0 20px 60px rgba(0,0,0,.5); }
+  background: rgba(46, 49, 58, .86); -webkit-box-shadow: 0 0 0 .5px rgba(0,0,0,.8), inset 0 0 0 1px rgba(255,255,255,.1), 0 20px 60px rgba(0,0,0,.5); }
 .menuextra .np-row { display: flex; gap: 10px; padding: 8px; align-items: center; }
 .menuextra .np-row img { width: 44px; height: 44px; border-radius: 5px; object-fit: cover; }
 .menuextra .np-row b { display: block; font-size: 13px; font-weight: 600; }
@@ -513,3 +510,5 @@
 /* The toolbar is tinted rather than backdrop-blurred: a blur can't sample past the window's top
    edge, which left a bright sliver of the banner showing above the controls. */
 .mac .toolbar { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(38, 41, 52, calc(0.94 - var(--over, 0) * 0.34)); }
+/* Performance: only the visible screen gets a compositing layer. */
+.mac .content .page { will-change: auto; }

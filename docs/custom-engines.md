@@ -164,8 +164,8 @@ Your quality, record-ahead, background-recording and unload settings all still a
   any songs that weren't included are recorded on *their* Mac with *their* engine. The import
   sheet warns them if that's different from yours.
 - **Engines run with your permissions**, like any program you install. Only use code you trust.
-- **Check the model's licence.** YuE2 is CC BY-NC 4.0 (non-commercial). MiniMax Music 3 has its
-  own community licence. What you may do with the songs depends on the model that made them.
+- **Check the model's license.** YuE2 is CC BY-NC 4.0 (non-commercial). MiniMax Music 3 has its
+  own community license. What you may do with the songs depends on the model that made them.
 
 ## Testing an engine without the app
 

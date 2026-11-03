@@ -375,7 +375,7 @@ public actor LibraryBuilder {
 
             \(profile.promptContext)
 
-            Slots (tier — genre). Core = squarely in their taste. Adjacent = a neighbouring style. Wildcard = a tasteful surprise:
+            Slots (tier — genre). Core = squarely in their taste. Adjacent = a neighboring style. Wildcard = a tasteful surprise:
             \(slotLines.joined(separator: "\n"))
 
             Rules:
@@ -426,7 +426,7 @@ public actor LibraryBuilder {
         "trio", "quartet", "orchestra", "ensemble", "collective", "club", "project", "experience", "featuring",
     ]
 
-    /// Lower-cased words that make a name recognisable (no articles, connectors or group nouns).
+    /// Lower-cased words that make a name recognizable (no articles, connectors or group nouns).
     static func distinctiveWords(_ name: String) -> [String] {
         name.lowercased()
             .split { !$0.isLetter && !$0.isNumber }
@@ -441,7 +441,7 @@ public actor LibraryBuilder {
             try Artist.filter(Column("batchID") == batch.id && Column("status") != ItemStatus.ready.rawValue)
                 .order(Column("createdAt")).fetchAll(db)
         }
-        // Core first so the listener's favourites land early.
+        // Core first so the listener's favorites land early.
         var ordered = Array(pending.filter { $0.tier == .core }.prefix(16) + pending.filter { a in
             !pending.filter { $0.tier == .core }.prefix(16).contains(where: { $0.id == a.id })
         })

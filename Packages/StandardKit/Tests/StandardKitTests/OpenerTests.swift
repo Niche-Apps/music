@@ -15,13 +15,13 @@ import Testing
 
     // MARK: Genre
 
-    @Test func favouriteGenreIsTheFirstCoreGenre() {
+    @Test func favoriteGenreIsTheFirstCoreGenre() {
         var taste = TasteProfile()
         taste.coreGenres = ["shoegaze", "dream pop", "post-punk"]
         #expect(Opener.favoriteGenre(taste) == "shoegaze")
     }
 
-    @Test func likedArtistsPullTheFavouriteGenre() {
+    @Test func likedArtistsPullTheFavoriteGenre() {
         var taste = TasteProfile()
         taste.coreGenres = ["shoegaze", "dream pop", "post-punk"]
         taste.likedArtists = [
@@ -40,7 +40,7 @@ import Testing
 
     // MARK: Artist
 
-    @Test func picksTheCoreArtistInTheFavouriteGenre() {
+    @Test func picksTheCoreArtistInTheFavoriteGenre() {
         let roster = [
             artist("Wild One", "dream pop", tier: .wildcard),
             artist("Near", "indie rock", tier: .adjacent),

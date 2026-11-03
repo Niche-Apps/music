@@ -57,7 +57,7 @@ enum FocalPoint {
 struct FocusedFillImage: View {
     let image: NSImage
     let focus: CGPoint
-    /// Where in the frame the focal point should sit. Slightly above centre leaves room for
+    /// Where in the frame the focal point should sit. Slightly above center leaves room for
     /// titles drawn over the bottom of the frame.
     var anchor = CGPoint(x: 0.5, y: 0.4)
 

@@ -199,7 +199,7 @@ struct EngineGuideSheet: View {
                         bullet("Songs you’ve already recorded keep their sound. Only new recordings use the new engine.")
                         bullet("Shared albums note which engine recorded them, so friends know what to expect if they record the rest.")
                         bullet("Your engine runs with your permissions, like any app you install. Only use code you trust.")
-                        bullet("Check your model’s licence before sharing what it makes.")
+                        bullet("Check your model’s license before sharing what it makes.")
                     }
                     .font(.callout)
                 }

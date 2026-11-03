@@ -17,13 +17,13 @@ export class ParticleField {
   private parts: P[] = []
   private w = 0
   private h = 0
-  private dpr = Math.min(window.devicePixelRatio || 1, 2)
+  private dpr = Math.min(window.devicePixelRatio || 1, innerWidth < 700 ? 1.5 : 2)
   progress = 0 // 0…(shapes-1), fractional
   private t0 = performance.now()
   private running = false
   private visible = false
 
-  constructor(readonly canvas: HTMLCanvasElement, readonly shapes: ShapeFn[], readonly count = 7000) {
+  constructor(readonly canvas: HTMLCanvasElement, readonly shapes: ShapeFn[], readonly count = innerWidth < 700 ? 2600 : 7000) {
     this.ctx = canvas.getContext('2d')!
     const ro = new ResizeObserver(() => this.layout())
     ro.observe(canvas)
@@ -107,6 +107,13 @@ export class ParticleField {
     const scatter = Math.sin(k * Math.PI) // particles loosen mid-morph
     const palA = PALETTES[a % PALETTES.length]
     const palB = PALETTES[b % PALETTES.length]
+    const styles: string[] = []
+    for (let ci = 0; ci < 3; ci++) {
+      const ca = palA[ci], cb = palB[ci]
+      const r = (ca[0] + (cb[0] - ca[0]) * k) | 0, g = (ca[1] + (cb[1] - ca[1]) * k) | 0, bl = (ca[2] + (cb[2] - ca[2]) * k) | 0
+      for (let al = 0; al < 4; al++) styles.push(`rgba(${r},${g},${bl},${(0.55 + al * 0.11).toFixed(2)})`)
+    }
+    const buckets: number[][] = styles.map(() => [])
     for (const q of this.parts) {
       let tx = q.tx[a] + (q.tx[b] - q.tx[a]) * k
       let ty = q.ty[a] + (q.ty[b] - q.ty[a]) * k
@@ -132,13 +139,18 @@ export class ParticleField {
       q.vy = (q.vy + (ty - q.y) * 0.045) * 0.82
       q.x += q.vx
       q.y += q.vy
-      const ci = Math.floor(q.c[0] * 3)
-      const ca = palA[ci], cb = palB[ci]
-      const r = ca[0] + (cb[0] - ca[0]) * k, g = ca[1] + (cb[1] - ca[1]) * k, bl = ca[2] + (cb[2] - ca[2]) * k
-      const speed = Math.min(1, Math.hypot(q.vx, q.vy) / 6)
-      ctx.fillStyle = `rgba(${r | 0},${g | 0},${bl | 0},${0.55 + q.c[1] * 0.35})`
-      const s = q.size * (1 + speed * 1.5)
-      ctx.fillRect(q.x - s / 2, q.y - s / 2, s, s)
+      const speed = Math.min(1, Math.abs(q.vx) + Math.abs(q.vy)) // cheap stand-in for |v|/6
+      const s = q.size * (1 + speed * 1.2)
+      const bucket = buckets[Math.floor(q.c[0] * 3) * 4 + Math.min(3, Math.floor(q.c[1] * 4))]
+      bucket.push(q.x - s / 2, q.y - s / 2, s)
+    }
+    for (let i = 0; i < styles.length; i++) {
+      const list = buckets[i]
+      if (!list.length) continue
+      ctx.fillStyle = styles[i]
+      ctx.beginPath()
+      for (let j = 0; j < list.length; j += 3) ctx.rect(list[j], list[j + 1], list[j + 2], list[j + 2])
+      ctx.fill()
     }
   }
 }

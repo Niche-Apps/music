@@ -192,7 +192,7 @@ struct CreateView: View {
     }
 }
 
-/// Pick an artist (favourites first), optionally add a brief, and write their next album.
+/// Pick an artist (favorites first), optionally add a brief, and write their next album.
 struct NewReleaseCard: View {
     @Environment(AppModel.self) private var model
     @Environment(LibraryState.self) private var library

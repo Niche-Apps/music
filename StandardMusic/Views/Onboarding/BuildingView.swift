@@ -628,7 +628,7 @@ private struct SpotlightCard<Accessory: View>: View {
     }
 }
 
-/// Stand-in portrait while the photo shoot is still happening: initials on the artist's colours.
+/// Stand-in portrait while the photo shoot is still happening: initials on the artist's colors.
 private struct Monogram: View {
     let artist: Artist
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

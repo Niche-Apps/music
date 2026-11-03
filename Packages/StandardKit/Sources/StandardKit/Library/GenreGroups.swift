@@ -24,7 +24,7 @@ public enum GenreGroups {
         }
 
         // 2. Fold each group into a bigger one whose words contain, or are contained by, its own
-        //    ("piano pop rock" into "piano rock"); tiny groups join their closest neighbour.
+        //    ("piano pop rock" into "piano rock"); tiny groups join their closest neighbor.
         var target: [String: String] = [:]
         for name in groups.keys.sorted(by: { (groups[$0]!.count, $1) < (groups[$1]!.count, $0) }) {
             let own = words(name), count = groups[name]!.count

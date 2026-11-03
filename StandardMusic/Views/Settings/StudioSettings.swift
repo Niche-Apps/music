@@ -51,7 +51,7 @@ struct StudioSettings: View {
                 .onChange(of: lookahead) { _, _ in model.player.refreshDemand() }
                 Toggle(isOn: $backgroundRecording) {
                     Text("Record in the background")
-                    Text("When the studio is free, it records the first song of albums you’re likely to play — favourites and your core taste — so Play starts instantly. Uses the GPU and more battery.")
+                    Text("When the studio is free, it records the first song of albums you’re likely to play — favorites and your core taste — so Play starts instantly. Uses the GPU and more battery.")
                 }
                 .onChange(of: backgroundRecording) { _, _ in model.recording.kick() }
             }

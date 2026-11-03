@@ -269,7 +269,7 @@ private struct PlayerColumn: View {
     }
 }
 
-/// Large artwork with a soft coloured shadow; breathes slowly while the song is being recorded.
+/// Large artwork with a soft colored shadow; breathes slowly while the song is being recorded.
 private struct BreathingArtwork: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let album: Album

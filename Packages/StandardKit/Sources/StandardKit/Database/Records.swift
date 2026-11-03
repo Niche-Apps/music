@@ -51,7 +51,7 @@ public struct Artist: Codable, Sendable, Hashable, Identifiable, FetchableRecord
     public var plannedAlbumCount: Int
     public var imagePath: String?
     public var imagePrompt: String?
-    /// Dominant colour of the portrait as hex, used for page tints.
+    /// Dominant color of the portrait as hex, used for page tints.
     public var accentHex: String?
     public var status: ItemStatus
     public var batchID: ID?
@@ -133,7 +133,7 @@ public struct Album: Codable, Sendable, Hashable, Identifiable, FetchableRecord,
     public var soul: String
     public var coverPrompt: String
     public var coverPath: String?
-    /// Album page colours extracted from the cover (background, primary, secondary, tertiary text).
+    /// Album page colors extracted from the cover (background, primary, secondary, tertiary text).
     public var palette: [String]
     public var trackCount: Int
     public var status: ItemStatus

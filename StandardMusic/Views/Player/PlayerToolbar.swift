@@ -96,7 +96,7 @@ extension PlayerModel.RepeatMode {
     }
 }
 
-/// Centre "LCD": artwork, title, artist — album and progress. While the current song is in the
+/// Center "LCD": artwork, title, artist — album and progress. While the current song is in the
 /// studio it shows the recording stage and an estimate instead of the scrubber.
 struct PlayerLCD: View {
     @Environment(AppModel.self) private var model

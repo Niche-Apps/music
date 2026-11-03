@@ -182,7 +182,7 @@ public struct TasteEngine: Sendable {
         var eras: [String]
     }
 
-    /// Condenses onboarding (and later, favourites) into the profile used for generation.
+    /// Condenses onboarding (and later, favorites) into the profile used for generation.
     public func refine(_ profile: TasteProfile) async throws -> TasteProfile {
         let schema = Schema.object([
             "headline": Schema.string("≤ 70 characters, evocative, second person not required"),
@@ -202,7 +202,7 @@ public struct TasteEngine: Sendable {
             \(profile.answers.map { "- \($0.question) → \($0.answer)" }.joined(separator: "\n"))
 
             Genres should be specific, music-journalist style (e.g. "dream pop", "UK garage", "outlaw country", "spiritual jazz"), not broad buckets.
-            Core = the heart of their taste. Adjacent = neighbouring styles they'd likely enjoy. Wildcard = a tasteful stretch they haven't mentioned.
+            Core = the heart of their taste. Adjacent = neighboring styles they'd likely enjoy. Wildcard = a tasteful stretch they haven't mentioned.
             Descriptors are sonic qualities (e.g. "warm analog production", "breathy female vocals", "odd time signatures").
             """
         let p = try await client.json(

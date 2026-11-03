@@ -3,7 +3,7 @@ import GRDB
 import StandardKit
 
 /// Chooses what plays after an album ends: something close in sound and era, nudged toward the
-/// listener's favourites and songs that are already recorded (so music keeps flowing).
+/// listener's favorites and songs that are already recorded (so music keeps flowing).
 struct AutoplayPicker {
     let db: AppDatabase
 

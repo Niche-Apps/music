@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-/// The "while you wait" song: one real track, in the listener's most likely favourite genre, written
+/// The "while you wait" song: one real track, in the listener's most likely favorite genre, written
 /// and recorded ahead of everything else so there's something to hear while the first library builds.
 ///
 /// The builder picks the artist as soon as the roster lands and writes that artist (and their lead
@@ -53,7 +53,7 @@ public enum Opener {
         return 0
     }
 
-    /// The artist to open with: a core-tier act in the favourite genre, earliest cast first.
+    /// The artist to open with: a core-tier act in the favorite genre, earliest cast first.
     /// `artists` should be in roster order.
     public static func pickArtist(_ artists: [Artist], genre: String) -> Artist? {
         let usable = artists.enumerated().filter { $0.element.status != .failed }

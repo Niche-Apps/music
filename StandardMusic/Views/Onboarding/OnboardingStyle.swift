@@ -58,7 +58,7 @@ extension ButtonStyle where Self == OnboardingPrimaryButtonStyle {
     static var onboardingPrimary: OnboardingPrimaryButtonStyle { .init() }
 }
 
-/// Selection check badge in the brand colour.
+/// Selection check badge in the brand color.
 struct SelectionCheck: View {
     var size: CGFloat = 26
 

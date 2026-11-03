@@ -3,7 +3,7 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-/// Stores artwork on disk (full size + thumbnail) and extracts page colours.
+/// Stores artwork on disk (full size + thumbnail) and extracts page colors.
 public struct ArtworkStore: Sendable {
     public let root: URL
 
@@ -51,7 +51,7 @@ public struct ArtworkStore: Sendable {
 
     // MARK: Palette
 
-    /// Apple-Music-style page colours: [background, primary text, secondary text, tertiary text] as hex.
+    /// Apple-Music-style page colors: [background, primary text, secondary text, tertiary text] as hex.
     public static func palette(from data: Data) -> [String] {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
             let image = CGImageSourceCreateThumbnailAtIndex(

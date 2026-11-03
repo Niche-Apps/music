@@ -44,6 +44,10 @@ async function boot() {
   finalWall(lib)
   dock(lib, player, win, cast)
   heroIntro()
+  // After the first paint settles, decode the window's images ahead of the tour.
+  if (innerWidth >= 700) setTimeout(() => win.warmUp(), 1200)
+  // The Listen covers and the closing cover grid decode in idle time too, well before they scroll in.
+  if (innerWidth >= 700) setTimeout(() => warmImages(document.querySelectorAll<HTMLImageElement>('.clips img, .final-wall img')), 4000)
 
   // Clicking play in the recreated window plays the real song.
   win.el.addEventListener('click', (e) => {
@@ -54,6 +58,20 @@ async function boot() {
   })
 }
 
+/** Decodes images a few at a time while the browser is idle. */
+function warmImages(list: Iterable<HTMLImageElement>) {
+  const imgs = [...list]
+  let i = 0
+  const idle = (cb: () => void) => ('requestIdleCallback' in window ? requestIdleCallback(cb, { timeout: 500 }) : setTimeout(cb, 40))
+  const next = () => {
+    const batch = imgs.slice(i, i + 6)
+    i += 6
+    if (!batch.length) return
+    Promise.all(batch.map((img) => { img.loading = 'eager'; return img.decode().catch(() => {}) })).then(() => idle(next))
+  }
+  idle(next)
+}
+
 // ---------- Hero ----------
 
 function buildWall(lib: Library) {
@@ -62,12 +80,14 @@ function buildWall(lib: Library) {
   // Size and count the rows from the viewport so tall screens are filled, not just the top.
   const size = Math.round(Math.min(240, Math.max(130, Math.max(innerHeight / 5.2, innerWidth / 9))))
   wall.style.setProperty('--cover', `${size}px`)
-  const lanes = Math.ceil((innerHeight * 1.45) / (size + 18)) + 1
+  const phone = innerWidth < 700
+  wall.classList.toggle('flat', phone)
+  const lanes = phone ? 3 : Math.ceil((innerHeight * 1.45) / (size + 18)) + 1
   for (let l = 0; l < lanes; l++) {
     const lane = document.createElement('div')
     lane.className = 'lane'
     lane.style.setProperty('--d', `${150 + l * 25}s`)
-    const pick = Array.from({ length: Math.ceil((innerWidth * 1.4) / size) + 4 }, (_, i) => covers[(l * 53 + i * 7) % covers.length])
+    const pick = Array.from({ length: Math.ceil((innerWidth * (phone ? 1.1 : 1.4)) / size) + (phone ? 2 : 4) }, (_, i) => covers[(l * 53 + i * 7) % covers.length])
     lane.innerHTML = [...pick, ...pick].map((id) => `<img src="${media.cover(id)}" alt="" loading="lazy" decoding="async">`).join('')
     wall.appendChild(lane)
   }
@@ -80,8 +100,8 @@ function heroIntro() {
     .from('.hero-copy .lede', { y: 24, opacity: 0, duration: 1.3 }, 0.45)
     .from('.cta-row > *', { y: 20, opacity: 0, duration: 1.2, stagger: 0.08 }, 0.6)
     .from('.hero-copy .fine', { opacity: 0, duration: 1.2 }, 0.8)
-    .from('.wall', { opacity: 0, scale: 1.3, duration: 3, ease: 'power2.out' }, 0)
-    .from('.window-scale', { y: 260, opacity: 0, duration: 2, ease: 'expo.out' }, 0.5)
+    .from('.wall .lane', { opacity: 0, duration: 2.4, stagger: 0.12, ease: 'power2.out' }, 0)
+    .from('.window-wrap', { y: 260, opacity: 0, duration: 2, ease: 'expo.out', clearProps: 'transform,opacity' }, 0.5)
 }
 
 // ---------- Tour ----------
@@ -103,6 +123,8 @@ interface Step {
   nav: string
   /** How this step's page arrives when it differs from the last one. */
   arrive?: 'swap' | 'push' | 'slide-up'
+  /** Scroll length of this step, in screens (default 1). */
+  len?: number
   /** In-step state, called with t in 0…1 (also slightly outside, around the edges). */
   update?: (t: number) => void
   focus: Focus[]
@@ -154,7 +176,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
       kicker: 'Artists', title: 'Every artist has a story.',
       body: 'Where they grew up, how they broke through, who left the band, the comeback. Each artist gets a backstory, a narrative arc and a vocal profile that never changes, so they sound like themselves on every record.',
       chips: ['Backstories', 'Career arcs', 'Fixed voices', 'Press photos'],
-      page: 'artists', nav: 'artists',
+      page: 'artists', nav: 'artists', len: 1.8,
       update: (t) => { win.setArtistFocus(clamp(t / 0.82) * (nArtists - 1)); win.newRelease(0) },
       focus: [{ t: 0, rect: [230, 40, 520, 640] }, { t: 0.25, rect: [230, 52, 1210, 420] }, { t: 0.8, rect: [230, 52, 1210, 420] }, { t: 0.95, rect: [460, 380, 980, 520] }],
       cursor: [
@@ -233,7 +255,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
       cursor: [{ t: 0.15, sel: '.layer-browse .genre-tile:nth-child(2)' }, { t: 0.5, sel: '.layer-browse .genre-tile:nth-child(7)' }, { t: 0.86, sel: '.nav .item[data-key="albums"]' }, { t: 0.95, sel: '.nav .item[data-key="albums"]', click: true }],
     },
     {
-      kicker: 'Share', title: 'Introduce a friend to your new favourite band.',
+      kicker: 'Share', title: 'Introduce a friend to your new favorite band.',
       body: 'Send an album as one file over AirDrop or Messages. It carries the artist, their story, the covers and any recordings, and your friend’s Mac records the rest. No servers, no accounts.',
       chips: ['.standardalbum', 'AirDrop', 'No cloud'],
       page: 'album', nav: 'albums',
@@ -242,8 +264,8 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
       cursor: [{ t: 0.1, sel: '.layer-album .album-head .circle.filled' }, { t: 0.18, sel: '.layer-album .album-head .circle.filled', click: true }, { t: 0.6, sel: '.sheet .buttons .primary' }, { t: 0.7, sel: '.sheet .buttons .primary', click: true }, { t: 0.82, sel: null }],
     },
     {
-      kicker: 'Everywhere on your Mac', title: 'It feels like real music because it is.',
-      body: 'Keep it playing in a floating MiniPlayer or from the menu bar while the studio records the next song. Who knows, maybe the next Grammy is hiding in the weights.',
+      kicker: 'Everywhere on your Mac', title: 'Music that keeps up with you.',
+      body: 'Keep it playing in a floating MiniPlayer or from the menu bar while the studio records the next song in the background.',
       chips: ['MiniPlayer ⇧⌘M', 'Menu bar', 'Notifications'],
       page: 'album', nav: 'albums',
       update: () => win.shareSheet(0),
@@ -251,7 +273,17 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
       cursor: [{ t: 0, sel: null }],
     },
   ]
-  document.documentElement.style.setProperty('--tour-steps', String(steps.length))
+  // Step boundaries in screens: most steps take one screen of scroll, some take more.
+  const starts: number[] = []
+  let total = 0
+  for (const st of steps) { starts.push(total); total += st.len ?? 1 }
+  /** Screens of scroll since the tour began → fractional step index (i + progress through step i). */
+  const toStep = (u: number) => {
+    if (u < 0) return u
+    for (let i = steps.length - 1; i >= 0; i--) if (u >= starts[i]) return i + Math.min(1, (u - starts[i]) / (steps[i].len ?? 1))
+    return 0
+  }
+  document.documentElement.style.setProperty('--tour-steps', String(total))
 
   // Copy blocks
   const copyHost = $('.steps')
@@ -314,7 +346,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
 
   const camera = (r: Rect) => {
     const { area } = L
-    const s = Math.max(L.minZoom, Math.min(area.w / r[2], area.h / r[3], L.maxZoom))
+    const s = L.compact ? L.area.w / viewPts().w : Math.max(L.minZoom, Math.min(area.w / r[2], area.h / r[3], L.maxZoom))
     const vwPts = area.w / s, vhPts = area.h / s
     const cx = vwPts < r[2] ? r[0] + vwPts / 2 : r[0] + r[2] / 2
     const cy = vhPts < r[3] ? r[1] + vhPts / 2 : r[1] + r[3] / 2
@@ -327,8 +359,25 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
     const last = keys[keys.length - 1]
     return [last, last, 0]
   }
+  // Compact screens: the camera frames whatever the cursor is working on (like a screen recording
+  // that zooms to the action); steps without a cursor use their own framing.
+  function viewPts() {
+    const z = L.vw < 700 ? Math.max(L.minZoom, L.area.w / 620) : Math.min(1, L.area.w / 980, L.area.h / 640)
+    return { w: L.area.w / z, h: L.area.h / z }
+  }
+  let lastAim: { x: number; y: number } | null = null
+  const followRect = (p: { x: number; y: number }): Rect => {
+    const v = viewPts()
+    const x = clamp(p.x - v.w * 0.5, 0, Math.max(0, 1440 - v.w))
+    const y = clamp(p.y - v.h * 0.42, 0, Math.max(0, 900 - v.h))
+    return [x, y, v.w, v.h]
+  }
   const focusAt = (i: number, t: number): Rect => {
     if (!L.compact) return FULL
+    if (steps[i].cursor?.some((c) => c.sel)) {
+      const p = cursorPoint(i + t) ?? lastAim
+      if (p) { lastAim = p; return followRect(p) }
+    }
     const f = steps[i].focus
     const [a, b, k] = at(f, t)
     return lerpRect(a.rect, b.rect, ease(k))
@@ -338,29 +387,36 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
   const path: { s: number; sel: string | null; click?: boolean }[] = []
   steps.forEach((st, i) => st.cursor?.forEach((c) => path.push({ s: i + c.t, sel: c.sel, click: c.click })))
   let lastS = -1
-  const updateCursor = (s: number) => {
-    if (s < 0 || !path.length) { win.cursor(null); lastS = s; return }
+  function cursorPoint(s: number) {
+    if (s < 0 || !path.length) return null
     let a = path[0], b = path[0]
     for (let i = 0; i < path.length; i++) { if (path[i].s <= s) a = path[i]; if (path[i].s >= s) { b = path[i]; break } }
     if (path[path.length - 1].s < s) b = a
     const k = b.s > a.s ? (s - a.s) / (b.s - a.s) : 0
     const pa = a.sel ? win.point(a.sel) : null
     const pb = b.sel ? win.point(b.sel) : null
-    const p = pa && pb ? { x: lerp(pa.x, pb.x, ease(k)), y: lerp(pa.y, pb.y, ease(k)) } : !a.sel ? null : pa
+    return pa && pb ? { x: lerp(pa.x, pb.x, ease(k)), y: lerp(pa.y, pb.y, ease(k)) } : !a.sel ? null : pa
+  }
+  const updateCursor = (s: number) => {
+    if (s < 0 || !path.length) { win.cursor(null); lastS = s; return }
+    const p = cursorPoint(s)
     const pressed = path.some((c) => c.click && Math.abs(s - c.s) < 0.012)
     win.cursor(s < path[0].s - 0.08 ? null : p, pressed)
     if (s > lastS) for (const c of path) if (c.click && lastS < c.s && s >= c.s) win.clickRipple()
     lastS = s
   }
 
-  const apply = (y: number) => {
-    const s = y - 1 // steps from the start of the tour (negative: still in the hero)
+  let lastY = NaN
+  const apply = (y: number, force = false) => {
+    if (!force && Math.abs(y - lastY) < 1e-5) return
+    lastY = y
+    const s = toStep(y - 1) // fractional step index (negative: still in the hero)
     const idx = Math.max(0, Math.min(steps.length - 1, Math.floor(s)))
     const cur = steps[idx]
     const prev = steps[idx - 1]
     const kIn = smooth(clamp((s - idx) / SWITCH))
 
-    // In-step state for the neighbours first, then the current step wins.
+    // In-step state for the neighbors first, then the current step wins.
     for (const j of [idx - 1, idx + 1, idx]) {
       const st = steps[j]
       if (st?.update && (j === idx || Math.abs(s - j - 0.5) < 0.75)) st.update(j === idx ? clamp(s - j) : j < idx ? 1 : 0)
@@ -388,19 +444,26 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
     let rect = focusAt(idx, clamp(s - idx))
     if (prev && s - idx < 0.15) rect = lerpRect(focusAt(idx - 1, 1), rect, ease(clamp((s - idx) / 0.15)))
     const cam = camera(rect)
-    const end = steps.length + 1
+    const end = total + 1
     const out = ease(clamp((y - (end - 0.75)) / 0.5))
     const tx = lerp(0, cam.x, intro) - out * (L.compact ? 0 : L.vw * 0.2)
     const ty = lerp(L.heroY, cam.y, intro) + out * 30
     const sc = lerp(L.heroScale, cam.s, intro) * (1 - out * 0.22)
     const rx = lerp(24, 0, ease(clamp(y / 0.8)))
-    wrap.style.transform = `translate3d(${tx}px, ${ty}px, 0) scale(${sc}) rotateX(${rx}deg) rotateY(${out * (L.compact ? 0 : 14)}deg)`
+    const ry = out * (L.compact ? 0 : 14)
+    wrap.style.transform = rx > 0.01 || ry > 0.01
+      ? `translate3d(${tx}px, ${ty}px, 0) scale(${sc}) rotateX(${rx}deg) rotateY(${ry}deg)`
+      : `translate3d(${tx.toFixed(1)}px, ${ty.toFixed(1)}px, 0) scale(${sc.toFixed(4)})`
     wrap.style.opacity = String(1 - out * (L.compact ? 0.85 : 0.7))
-    wrap.style.filter = out > 0.01 ? `blur(${out * 2}px)` : ''
+    const blur = out > 0.01 ? `blur(${(out * 2).toFixed(1)}px)` : ''
+    if (wrap.style.filter !== blur) wrap.style.filter = blur
     heroCopy.style.transform = `translate3d(0, ${-y * L.vh * 0.45}px, 0)`
     heroCopy.style.opacity = String(1 - clamp(y / 0.45))
     heroCopy.style.pointerEvents = y > 0.3 ? 'none' : ''
     wall.style.opacity = String(0.5 * (1 - clamp(y / 0.7)))
+    // Once faded out, the wall and hero copy leave the GPU entirely (no raster, no running animations).
+    const heroGone = y > 0.72
+    if (wall.classList.contains('off') !== heroGone) { wall.classList.toggle('off', heroGone); heroCopy.classList.toggle('off', heroGone) }
     if (L.compact) {
       const a = L.area, k = intro * (1 - out)
       viewport.style.clipPath = `inset(${lerp(0, a.y, k)}px ${lerp(0, L.vw - a.x - a.w, k)}px ${lerp(0, L.vh - a.y - a.h, k)}px ${lerp(0, a.x, k)}px round ${lerp(0, 18, k)}px)`
@@ -410,11 +473,18 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
     copies.forEach((c, i) => {
       let d = s - i
       if (i === steps.length - 1) d = Math.min(d, 0.5)
-      const travel = L.compact ? 0.34 : 0.9
+      if (L.compact) {
+        const vis = Math.min(clamp(d / 0.12), clamp((1 - d) / 0.12) + (i === steps.length - 1 ? 1 : 0))
+        c.style.opacity = String(vis)
+        c.style.transform = `translate3d(0, ${(1 - vis) * (d < 0.5 ? 14 : -8)}px, 0)`
+        c.style.pointerEvents = vis > 0.5 ? 'auto' : 'none'
+        return
+      }
+      const travel = 0.9
       const pos = (0.5 - d) * travel
       const vis = clamp((travel * 0.44 - Math.abs(pos)) / (travel * 0.2))
       c.style.opacity = String(vis)
-      c.style.transform = L.compact ? `translate3d(0, ${pos * L.vh}px, 0)` : `translate3d(0, calc(-50% + ${pos * L.vh}px), 0)`
+      c.style.transform = `translate3d(0, calc(-50% + ${pos * L.vh}px), 0)`
       c.style.pointerEvents = vis > 0.5 ? 'auto' : 'none'
     })
     progress.style.opacity = String(clamp((y - 0.9) / 0.2) * (1 - clamp((y - end + 0.1) / 0.3)))
@@ -437,13 +507,13 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player) {
     menu.style.transformOrigin = '100% 0'
   }
 
-  const span = (steps.length * 100 + 195 - 100) / 100
+  const span = (total * 100 + 195 - 100) / 100
   ScrollTrigger.create({
     trigger: '.tour', start: 'top top', end: 'bottom bottom',
     onUpdate: (self) => apply(self.progress * span),
-    onRefresh: (self) => apply(self.progress * span),
+    onRefresh: (self) => apply(self.progress * span, true),
   })
-  apply(0)
+  apply(0, true)
 }
 
 function nextTitle(lib: Library, cast: Cast) {
@@ -529,10 +599,10 @@ function how(lib: Library, cast: Cast) {
   const peaks = cast.nowPlaying.track.peaks ?? Array.from({ length: 120 }, (_, i) => 0.3 + 0.7 * Math.abs(Math.sin(i * 0.3)))
   const field = new ParticleField($<HTMLCanvasElement>('canvas.field'), [tasteShape(genres), lyricShape(lyricLines), waveShape(peaks), recordShape])
   const phases = [
-    { k: '01 · Taste', t: 'It starts with what you love.', p: 'A two-minute quiz (genres, artists you know, this or that, your pet hates) becomes a taste profile. It decides who to invent: mostly what you love, some neighbours, a few wildcards.', spec: [['You give it', 'Genres, favourite artists, pet hates'], ['You get', `A starting roster of ${lib.artists.length} artists`]] },
+    { k: '01 · Taste', t: 'It starts with what you love.', p: 'A two-minute quiz (genres, artists you know, this or that, your pet hates) becomes a taste profile. It decides who to invent: mostly what you love, some neighbors, a few wildcards.', spec: [['You give it', 'Genres, favorite artists, pet hates'], ['You get', `A starting roster of ${lib.artists.length} artists`]] },
     { k: '02 · The artists', t: 'Every artist gets a whole world.', p: 'A biography, a voice that never changes, a hidden soul that keeps them in character, a discography that follows their career, and covers made for each record. Lyrics are written just before a song records, in that artist’s own register.', spec: [['Each artist', 'A backstory, a voice, a career arc'], ['Each album', 'Track list, liner notes, cover art']] },
     { k: '03 · Recording', t: 'Then your Mac records the song.', p: 'Press play and your Mac performs it: vocals, band, mix and master, a finished track in a few minutes. Record-ahead keeps the next one ready, so the music doesn’t stop.', spec: [['Where', 'On your Mac, offline'], ['Sounds like', 'A finished, mastered record']] },
-    { k: '04 · Your library', t: 'And then it’s yours.', p: 'Songs land in your library with favourites, plays, search and backups. Share any album as a single file, and your friend’s Mac records whatever you didn’t send.', spec: [['Kept', 'On your Mac, backed up'], ['Shared', 'One file, over AirDrop or Messages']] },
+    { k: '04 · Your library', t: 'And then it’s yours.', p: 'Songs land in your library with favorites, plays, search and backups. Share any album as a single file, and your friend’s Mac records whatever you didn’t send.', spec: [['Kept', 'On your Mac, backed up'], ['Shared', 'One file, over AirDrop or Messages']] },
   ]
   const host = $('.how-copy')
   host.innerHTML = phases.map((ph) => `<div class="phase"><div class="kicker">${ph.k}</div><h3>${ph.t}</h3><p>${ph.p}</p>

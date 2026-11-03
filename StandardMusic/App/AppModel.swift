@@ -401,7 +401,7 @@ final class AppModel {
         }
     }
 
-    // MARK: Favourites
+    // MARK: Favorites
 
     func toggleFavorite(track id: ID) {
         guard let updated = try? services.db.modifyTrack(id, { $0.isFavorite.toggle() }),
@@ -431,7 +431,7 @@ final class AppModel {
                 styleTags: artist.tags.joined(separator: ", "), title: artist.name))
     }
 
-    /// Favourites feed the taste profile used by every future generation.
+    /// Favorites feed the taste profile used by every future generation.
     private func recordSignal(_ signal: ListeningSignal) {
         if signal.kind == .unfavorite {
             taste.signals.removeAll { $0.title == signal.title && $0.artistName == signal.artistName }
@@ -441,7 +441,7 @@ final class AppModel {
         }
         taste.updatedAt = Date()
         try? services.db.setValue(taste, forKey: TasteProfile.storageKey)
-        // Every few favourites, re-distil the profile so new artists follow the listener's evolving taste.
+        // Every few favorites, re-distil the profile so new artists follow the listener's evolving taste.
         let count = taste.signals.count
         if count > 0, count % 8 == 0 {
             let snapshot = taste

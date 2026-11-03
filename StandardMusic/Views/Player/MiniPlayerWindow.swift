@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Gives the MiniPlayer's borderless window its behaviour: floats when asked, drags by its background,
+/// Gives the MiniPlayer's borderless window its behavior: floats when asked, drags by its background,
 /// joins full-screen spaces and remembers where the listener put it.
 struct MiniPlayerWindowConfigurator: NSViewRepresentable {
     var floats: Bool
