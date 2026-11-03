@@ -1,0 +1,19 @@
+{
+  "name": "standard-music-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 100.79.199.1 --port 5180",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 100.79.199.1 --port 5181",
+    "export-library": "node tools/export-library.mjs"
+  },
+  "devDependencies": {
+    "typescript": "5.6.3",
+    "vite": "5.4.10"
+  },
+  "dependencies": {
+    "gsap": "3.12.5",
+    "lenis": "1.1.13"
+  }
+}

@@ -1,0 +1,41 @@
+// SF Symbols-style icons, drawn to match the glyphs the app uses at its sizes.
+const s = (body: string, vb = '0 0 24 24', extra = '') =>
+  `<svg viewBox="${vb}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" ${extra}>${body}</svg>`
+const f = (body: string, vb = '0 0 24 24') => `<svg viewBox="${vb}" fill="currentColor">${body}</svg>`
+
+export const icon = {
+  house: s('<path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.5V20h4.5v-6h4v6h4.5V9.5"/>'),
+  grid: s('<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>'),
+  sparkles: s('<path d="M10 3.5c.6 3.9 2.6 5.9 6.5 6.5-3.9.6-5.9 2.6-6.5 6.5-.6-3.9-2.6-5.9-6.5-6.5 3.9-.6 5.9-2.6 6.5-6.5Z"/><path d="M17.5 14.5c.3 1.9 1.3 2.9 3.2 3.2-1.9.3-2.9 1.3-3.2 3.2-.3-1.9-1.3-2.9-3.2-3.2 1.9-.3 2.9-1.3 3.2-3.2Z"/>'),
+  clock: s('<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.2 2"/>'),
+  mic: s('<path d="m14.5 4.5 5 5-9.5 9.5H5v-5Z"/><path d="m12.5 6.5 5 5"/>'),
+  albums: s('<rect x="5" y="7.5" width="14" height="13" rx="2"/><path d="M7 5h10M9 2.8h6"/>'),
+  note: s('<path d="M9.5 18V5.5l9-2v12"/><circle cx="7" cy="18" r="2.5"/><circle cx="16" cy="15.5" r="2.5"/>'),
+  star: s('<path d="m12 3.6 2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8Z"/>'),
+  starFill: f('<path d="m12 3.6 2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8Z"/>'),
+  plus: s('<path d="M12 5v14M5 12h14"/>'),
+  search: s('<circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/>'),
+  sidebar: s('<rect x="3.5" y="5" width="17" height="14" rx="3"/><path d="M9.5 5v14"/><path d="M5.8 8.5h1.6M5.8 11h1.6M5.8 13.5h1.6"/>'),
+  shuffle: s('<path d="M3.5 7.5h3.2c2.2 0 3.5 1.1 4.7 3.3l1.2 2.4c1.2 2.2 2.5 3.3 4.7 3.3h3.2"/><path d="M3.5 16.5h3.2c1.5 0 2.6-.5 3.5-1.5M14 9c.9-1 2-1.5 3.5-1.5h3"/><path d="m18.3 5.3 2.2 2.2-2.2 2.2M18.3 14.3l2.2 2.2-2.2 2.2"/>'),
+  backward: f('<path d="M11.5 6.6v10.8L3.8 12Z"/><path d="M20.2 6.6v10.8L12.5 12Z"/>'),
+  forward: f('<path d="M12.5 6.6v10.8l7.7-5.4Z"/><path d="M3.8 6.6v10.8l7.7-5.4Z"/>'),
+  play: f('<path d="M7 4.8v14.4c0 .8.9 1.3 1.6.9l11.3-7.2c.6-.4.6-1.4 0-1.8L8.6 3.9C7.9 3.5 7 4 7 4.8Z"/>'),
+  pause: f('<rect x="6" y="4.5" width="4" height="15" rx="1.2"/><rect x="14" y="4.5" width="4" height="15" rx="1.2"/>'),
+  repeat: s('<path d="M4.5 11V9.5A2.5 2.5 0 0 1 7 7h12.5"/><path d="m17 4.5 2.5 2.5L17 9.5"/><path d="M19.5 13v1.5A2.5 2.5 0 0 1 17 17H4.5"/><path d="m7 19.5-2.5-2.5L7 14.5"/>'),
+  speakerLow: f('<path d="M4 9.5h3l4-3.5v12l-4-3.5H4Z"/>'),
+  speakerHigh: s('<path d="M3.5 9.5h3l4-3.5v12l-4-3.5h-3Z" fill="currentColor" stroke="none"/><path d="M14 9.5a3.5 3.5 0 0 1 0 5M16.5 7.5a6.5 6.5 0 0 1 0 9M19 5.5a9.5 9.5 0 0 1 0 13"/>'),
+  quote: s('<path d="M4.5 6.5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H11l-4 3.5v-3.5h-.5a2 2 0 0 1-2-2Z"/><path d="M9 9v2.5M12 9v2.5" stroke-width="2"/>'),
+  list: s('<path d="M9 7h11M9 12h11M9 17h11"/><circle cx="4.8" cy="7" r=".9" fill="currentColor"/><circle cx="4.8" cy="12" r=".9" fill="currentColor"/><circle cx="4.8" cy="17" r=".9" fill="currentColor"/>'),
+  chevronLeft: s('<path d="m14.5 5.5-6.5 6.5 6.5 6.5"/>'),
+  chevronRight: s('<path d="m9.5 5.5 6.5 6.5-6.5 6.5"/>'),
+  chevronDown: s('<path d="m5.5 9.5 6.5 6.5 6.5-6.5"/>'),
+  share: s('<path d="M12 3.5v11M8.5 7 12 3.5 15.5 7"/><path d="M8 10.5H6.5a1.5 1.5 0 0 0-1.5 1.5v6.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V12a1.5 1.5 0 0 0-1.5-1.5H16"/>'),
+  ellipsis: f('<circle cx="6" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18" cy="12" r="1.7"/>'),
+  disc: s('<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.5"/><path d="M7.6 9.2a5 5 0 0 1 2.2-2.3"/>'),
+  waveform: s('<path d="M4 10v4M7.5 7v10M11 4.5v15M14.5 8v8M18 10.5v3M21 11.5v1"/>'),
+  infinity: s('<path d="M12 12c-1.8-2.4-3.3-3.6-5-3.6a3.6 3.6 0 1 0 0 7.2c1.7 0 3.2-1.2 5-3.6Zm0 0c1.8 2.4 3.3 3.6 5 3.6a3.6 3.6 0 1 0 0-7.2c-1.7 0-3.2 1.2-5 3.6Z"/>'),
+  check: s('<path d="m5 12.5 4.5 4.5L19 7.5"/>', '0 0 24 24', 'stroke-width="2.4"'),
+  xmark: s('<path d="m7 7 10 10M17 7 7 17"/>'),
+  stop: f('<rect x="6.5" y="6.5" width="11" height="11" rx="2"/>'),
+  music: f('<path d="M9 17.6V6.9c0-.6.4-1.1 1-1.2l8.6-1.8c.7-.1 1.4.4 1.4 1.2v10.2"/><circle cx="6.6" cy="17.6" r="2.6"/><circle cx="17.4" cy="15.3" r="2.6"/><path d="M9 6.9 20 4.6v2.6L9 9.5Z"/>'),
+}
