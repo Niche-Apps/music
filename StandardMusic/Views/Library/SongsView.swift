@@ -10,6 +10,7 @@ struct SongRow: Codable, FetchableRecord, Hashable, Identifiable, Sendable {
     var duration: Double?
     var playCount: Int
     var isFavorite: Bool
+    var isExplicit: Bool
     var status: String
     var audioPath: String?
     var discNumber: Int
@@ -30,7 +31,7 @@ struct SongRow: Codable, FetchableRecord, Hashable, Identifiable, Sendable {
         try SongRow.fetchAll(
             db,
             sql: """
-                SELECT t.id, t.title, t.duration, t.playCount, t.isFavorite, t.status, t.audioPath, t.discNumber,
+                SELECT t.id, t.title, t.duration, t.playCount, t.isFavorite, t.isExplicit, t.status, t.audioPath, t.discNumber,
                        t.trackNumber, al.id AS albumID, al.title AS albumTitle, al.releaseYear,
                        ar.id AS artistID, ar.name AS artistName, ar.sortName AS artistSort
                 FROM track t JOIN album al ON al.id = t.albumID JOIN artist ar ON ar.id = t.artistID
@@ -135,6 +136,7 @@ struct SongsView: View {
             TableColumn("Title", value: \SongRow.title) { row in
                 Text(row.title)
                     .foregroundStyle(row.isPlayable ? .primary : .secondary)
+                    .explicitBadge(row.isExplicit, size: 10)
             }
             .width(min: 140, ideal: 260)
             TableColumn("Artist", value: \SongRow.artistSort) { row in

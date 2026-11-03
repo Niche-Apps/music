@@ -64,6 +64,9 @@ final class RecordingQueue {
     /// Explicit "record this" requests, in order.
     private(set) var requested: [ID] = []
     private(set) var failures: [ID: String] = [:]
+    /// The listener pressed Stop Recording. Nothing records (not even songs the player is waiting
+    /// on, or background recording) until they ask for music again.
+    private(set) var isStopped = false
     /// Lifetime stats for estimating durations.
     private(set) var averageSecondsPerSong: Double = 420
     var modelDirectory: () -> URL? = { nil }
@@ -92,7 +95,41 @@ final class RecordingQueue {
     /// Queue songs to record (e.g. "Record Album").
     func request(_ ids: [ID]) {
         for id in ids where !requested.contains(id) { requested.append(id) }
+        isStopped = false
         pump()
+    }
+
+    /// Stops the studio: cancels the song being recorded (it goes back to "not recorded", nothing
+    /// is lost) and drops everything queued behind it.
+    func stopAll() {
+        isStopped = true
+        requested.removeAll()
+        for task in lyricsTasks.values { task.cancel() }
+        lyricsTasks.removeAll()
+        if let active {
+            recordLog.info("Stopped recording \(active.title) at the listener's request")
+            cancelledByPreemption.insert(active.trackID)
+            switch active.phase {
+            case .recording:
+                Task { await services.engine.cancel(jobID: active.trackID) }
+            case .writingLyrics, .waitingForModel:
+                // The engine hasn't started; stop the lyric request now rather than after it returns.
+                worker?.cancel()
+            }
+        }
+        onActivityChange?()
+    }
+
+    /// Lets the studio work again after Stop Recording (the listener played or asked for a song).
+    func resume() {
+        guard isStopped else { return }
+        isStopped = false
+        pump()
+    }
+
+    /// Anything for the studio to stop: a song recording now, or songs waiting for it.
+    var hasWork: Bool {
+        active != nil || (!isStopped && (!requested.isEmpty || playbackDemand.contains { failures[$0] == nil }))
     }
 
     func cancelRequest(_ ids: [ID]) {
@@ -114,6 +151,7 @@ final class RecordingQueue {
     }
 
     func retry(_ id: ID) {
+        isStopped = false
         failures[id] = nil
         _ = try? services.db.modifyTrack(id) { $0.status = .pending }
         pump()
@@ -192,6 +230,7 @@ final class RecordingQueue {
     }
 
     private func pump() {
+        guard !isStopped else { return }
         guard worker == nil, let next = nextCandidate() else {
             prepareLyricsAhead()
             return
@@ -250,7 +289,8 @@ final class RecordingQueue {
             let voice = (try? await db.reader.read { db in
                 try String.fetchOne(db, sql: "SELECT voice FROM artist WHERE id = ?", arguments: [track.artistID])
             }) ?? ""
-            let style = Voice.recordingStyle(tags: track.styleTags, voice: voice, isInstrumental: track.isInstrumental)
+            let genreTags = GenreSound.enforce(tags: track.styleTags, genres: [info.artist.primaryGenre] + info.artist.genres)
+            let style = Voice.recordingStyle(tags: genreTags, voice: voice, isInstrumental: track.isInstrumental)
             let maxSeconds = 60 * max(1, UserDefaults.standard.double(forKey: Pref.maxSongMinutes))
             let job = EngineJob(
                 id: id, style: style, lyrics: lyrics, planning: ScorePlanningPref.current.rawValue,
@@ -286,6 +326,12 @@ final class RecordingQueue {
             await services.engine.clearCancel(jobID: id)
         } catch is CancellationError {
             _ = try? db.modifyTrack(id) { $0.status = .pending }
+            cancelledByPreemption.remove(id)
+        } catch where Task.isCancelled || cancelledByPreemption.contains(id) {
+            // Stopped mid-request (a cancelled network call surfaces as URLError, not CancellationError).
+            _ = try? db.modifyTrack(id) { $0.status = .pending }
+            cancelledByPreemption.remove(id)
+            await services.engine.clearCancel(jobID: id)
         } catch {
             recordLog.error("Recording \(info.track.title) failed: \(error.localizedDescription)")
             failures[id] = error.localizedDescription

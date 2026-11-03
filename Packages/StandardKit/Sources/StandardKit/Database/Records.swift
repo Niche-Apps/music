@@ -197,6 +197,8 @@ public struct Track: Codable, Sendable, Hashable, Identifiable, FetchableRecord,
     public var bpm: Int?
     public var mood: String
     public var isInstrumental: Bool
+    /// Lyrics contain strong language or explicit themes (shown with an E).
+    public var isExplicit: Bool = false
     public var seed: Int64
     public var status: TrackStatus
     public var audioPath: String?

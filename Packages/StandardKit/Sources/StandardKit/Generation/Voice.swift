@@ -31,6 +31,6 @@ public enum Voice {
 
     /// Prompt guidance for the `voice` field when writing an artist.
     static let fieldGuidance = """
-        voice (private): the lead singer's permanent voice as 4–8 comma-separated music-tag words — gender, register, timbre and delivery, e.g. "female alto vocal, smoky, breathy, intimate" or "male baritone vocal, gravelly, warm". This exact line is used for every song they ever record, so describe the person, not a song. Use "instrumental" for instrumental acts.
+        voice (private): the lead singer's permanent voice as 4–8 comma-separated music-tag words — gender, register, timbre and delivery, idiomatic to the genre: an arena rock singer belts ("male tenor vocal, powerful, high belting, raspy"), an electropop singer is bright and polished ("female soprano vocal, bright, glossy, auto-tuned"), a rapper raps ("male vocal, rapped, punchy flow"), a folk singer may be close and warm. Don't default to soft, breathy or intimate. This exact line is used for every song they ever record, so describe the person, not a song. Use "instrumental" for instrumental acts.
         """
 }

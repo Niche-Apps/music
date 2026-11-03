@@ -170,6 +170,21 @@ public final class AppDatabase: Sendable {
                 t.add(column: "voice", .text).notNull().defaults(to: "")
             }
         }
+        m.registerMigration("v3-genre-true-voices") { db in
+            // Early voices were cast with the listener's taste in mind, so most came out soft and
+            // intimate whatever the genre. Re-cast (lazily, by SongWriter) every artist who hasn't
+            // recorded anything yet; recorded artists keep theirs so they still sound like themselves.
+            try db.execute(sql: """
+                UPDATE artist SET voice = ''
+                WHERE voice != 'instrumental'
+                  AND NOT EXISTS (SELECT 1 FROM track WHERE track.artistID = artist.id AND track.status = 'ready')
+                """)
+        }
+        m.registerMigration("v4-explicit") { db in
+            try db.alter(table: "track") { t in
+                t.add(column: "isExplicit", .boolean).notNull().defaults(to: false)
+            }
+        }
         return m
     }
 

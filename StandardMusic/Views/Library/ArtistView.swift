@@ -304,6 +304,7 @@ struct HeroImage: View {
     let artist: Artist
     var fallback: [Color] = []
     @State private var image: NSImage?
+    @State private var focus = FocalPoint.fallback
 
     var body: some View {
         let accent = Color(hex: artist.accentHex).map { [$0, $0.opacity(0.5)] }
@@ -324,17 +325,29 @@ struct HeroImage: View {
             }
             .overlay {
                 if let image {
-                    Image(nsImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fill)
+                    // Square portraits in a wide banner: keep the faces in frame.
+                    FocusedFillImage(image: image, focus: focus)
                         .transition(.opacity)
                 }
             }
             .clipped()
             .task(id: artist.imagePath) {
+                image = nil
                 guard let path = artist.imagePath else { return }
                 let artwork = model.services.artwork
-                if let thumb = ImageCache.shared.image(for: artwork.thumbnailURL(for: path)) { image = thumb }
-                let full = await ImageCache.shared.load(artwork.url(for: path))
-                withAnimation(.easeOut(duration: 0.25)) { image = full ?? image }
+                let fullURL = artwork.url(for: path)
+                // Only show the thumbnail early if we already know where to crop it.
+                if let known = FocalPoint.cached(for: fullURL),
+                   let thumb = ImageCache.shared.image(for: artwork.thumbnailURL(for: path)) {
+                    focus = known
+                    image = thumb
+                }
+                guard let full = await ImageCache.shared.load(fullURL) else { return }
+                let point = await FocalPoint.find(in: full, for: fullURL)
+                withAnimation(.easeOut(duration: 0.25)) {
+                    focus = point
+                    image = full
+                }
             }
     }
 }

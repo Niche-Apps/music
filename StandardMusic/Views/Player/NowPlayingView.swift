@@ -210,6 +210,7 @@ private struct PlayerColumn: View {
                         .font(.system(size: 22, weight: .bold))
                         .lineLimit(2)
                         .accessibilityAddTraits(.isHeader)
+                        .explicitBadge(info.track.isExplicit, size: 15)
                     Spacer(minLength: 8)
                     FavoriteButton(isFavorite: info.track.isFavorite) { model.toggleFavorite(track: info.id) }
                         .font(.system(size: 17))
@@ -523,7 +524,7 @@ private struct StudioCard: View {
                 .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("IN THE STUDIO").font(.system(size: 11, weight: .bold)).tracking(1.2).opacity(0.6)
-                    Text(mine ? active?.stageLabel ?? "Recording" : "Waiting its turn")
+                    Text(mine ? active?.stageLabel ?? "Recording" : model.recording.isStopped ? "Recording stopped" : "Waiting its turn")
                         .font(.system(size: 24, weight: .bold))
                         .contentTransition(.opacity)
                     Text(subtitle(active: active, mine: mine))
@@ -536,6 +537,19 @@ private struct StudioCard: View {
                 ? Spoken.recording(fraction: active!.fraction, stage: active!.stageLabel, remaining: active!.remaining)
                 : subtitle(active: active, mine: mine))
             .accessibilityAddTraits(.updatesFrequently)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .topTrailing) {
+                if model.recording.hasWork {
+                Button { model.stopRecording() } label: {
+                    Image(systemName: "stop.fill").font(.system(size: 11, weight: .bold)).frame(width: 30, height: 30)
+                }
+                .buttonStyle(.plain)
+                .background(Circle().fill(.white.opacity(0.14)))
+                .overlay(Circle().strokeBorder(.white.opacity(0.18), lineWidth: 1))
+                .help("Stop recording (⌘.)")
+                .accessibilityLabel("Stop recording")
+                }
+            }
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(Self.steps.enumerated()), id: \.offset) { i, name in
                     HStack(spacing: 12) {
@@ -566,13 +580,22 @@ private struct StudioCard: View {
             .animation(.smooth, value: step)
         }
         .padding(22)
+        // Not .glassEffect: this card lives inside the panel's faded scroll mask, where Liquid Glass
+        // can't sample the backdrop and smears dark patches across the corners. The backdrop is
+        // already a blurred artwork wash, so a translucent panel reads the same.
+        .background {
+            let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
+            shape.fill(.black.opacity(0.18))
+                .overlay(shape.fill(LinearGradient(colors: [.white.opacity(0.10), .white.opacity(0.03)], startPoint: .topLeading, endPoint: .bottomTrailing)))
+                .overlay(shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.22), .white.opacity(0.06)], startPoint: .top, endPoint: .bottom), lineWidth: 1))
+        }
         .background(LegibilityScrim(shape: RoundedRectangle(cornerRadius: 20), opacity: 0.6))
-        .glassEffect(.regular.tint(.black.opacity(0.15)), in: .rect(cornerRadius: 20))
         .accessibilityElement(children: .contain)
     }
 
     private func subtitle(active: RecordingQueue.Activity?, mine: Bool) -> String {
         guard mine, let active else {
+            if model.recording.isStopped { return "Press play to start recording it again." }
             if let active { return "Finishing “\(active.title)” first. This song starts as soon as it’s recorded." }
             return "This song starts as soon as it’s recorded."
         }

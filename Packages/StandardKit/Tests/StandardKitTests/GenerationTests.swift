@@ -60,3 +60,76 @@ import Testing
         #expect(shelves.count >= 6)
     }
 }
+
+@Suite struct GenreSoundTests {
+    @Test func electropopLosesFolkInstrumentsAndGainsItsSound() {
+        let tags = "English, electropop, tactile 2020s production, nylon guitar, felt piano, soft kick, tender, midtempo"
+        let out = GenreSound.enforce(tags: tags, genres: ["electropop"])
+        #expect(!out.contains("nylon guitar"))
+        #expect(!out.contains("felt piano"))
+        #expect(out.contains("glossy"))
+        #expect(out.contains("synthesizers"))
+    }
+
+    @Test func arenaRockDropsHarmoniumKeepsGuitars() {
+        let tags = "Spanish, arena rock, raw 1986 production, electric guitars, harmonium, toms, urgent, fast"
+        let out = GenreSound.enforce(tags: tags, genres: ["arena rock", "hard rock"])
+        #expect(!out.contains("harmonium"))
+        #expect(out.contains("electric guitars"))
+        #expect(out.contains("stadium-sized"))
+    }
+
+    @Test func specificGenresMatchBeforeBroadOnes() {
+        #expect(GenreSound.reference(for: ["electropop"])?.keys.first == "electropop")
+        #expect(GenreSound.reference(for: ["indie folk-rock"])?.keys.first == "folk rock")
+        #expect(GenreSound.reference(for: ["polka"]) == nil)
+        #expect(GenreSound.enforce(tags: "polka, accordion", genres: ["polka"]) == "polka, accordion")
+    }
+
+    @Test func lyricModesAreStableAndVaried() {
+        let a = LyricMode.brief(albumID: "album-1", trackNumber: 3, trackCount: 10, genres: ["indie"])
+        #expect(a == LyricMode.brief(albumID: "album-1", trackNumber: 3, trackCount: 10, genres: ["indie"]))
+        let picks = LyricMode.assign(count: 10, genres: ["indie"], seed: 42).map(\.name)
+        #expect(zip(picks, picks.dropFirst()).allSatisfy { $0 != $1 })
+    }
+}
+
+@Suite(.serialized) struct ContentRatingTests {
+    func withExplicit<T>(_ allowed: Bool, _ body: () -> T) -> T {
+        let key = ContentRating.allowExplicitKey
+        let old = UserDefaults.standard.object(forKey: key)
+        UserDefaults.standard.set(allowed, forKey: key)
+        defer { UserDefaults.standard.set(old, forKey: key) }
+        return body()
+    }
+
+    func share(_ genres: [String]) -> Double {
+        let n = 4000
+        let hits = (0 ..< n).filter {
+            ContentRating.mayBeExplicit(trackID: "track-\($0)", genres: genres, isInstrumental: false)
+        }.count
+        return Double(hits) / Double(n)
+    }
+
+    @Test func explicitSongsStayAMinorityAndDependOnGenre() {
+        withExplicit(true) {
+            #expect(abs(share(["hip hop"]) - 0.3) < 0.04)
+            #expect(share(["arena rock"]) < 0.12)
+            #expect(share(["chamber folk"]) < 0.07)
+            #expect(share(["gospel"]) == 0)
+            #expect(!ContentRating.mayBeExplicit(trackID: "track-1", genres: ["hip hop"], isInstrumental: true))
+        }
+    }
+
+    @Test func nothingIsExplicitWhenNotAllowed() {
+        withExplicit(false) { #expect(share(["hip hop"]) == 0) }
+    }
+
+    @Test func detectsStrongLanguageButNotInnocentWords() {
+        #expect(ContentRating.containsExplicitLanguage("[Verse]\nWhat the Fuck is this"))
+        #expect(ContentRating.containsExplicitLanguage("bullshit"))
+        #expect(ContentRating.containsExplicitLanguage("you dumb bitch"))
+        #expect(!ContentRating.containsExplicitLanguage("Dickens on the cocktail shelf, passing glasses"))
+        #expect(!ContentRating.containsExplicitLanguage("A quiet song about the sea"))
+    }
+}

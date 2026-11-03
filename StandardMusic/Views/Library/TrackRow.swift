@@ -184,6 +184,7 @@ struct TrackRow: View {
                     .font(.system(size: 13, weight: state == .playing || state == .paused ? .semibold : .regular))
                     .foregroundStyle(dim ? .secondary : .primary)
                     .lineLimit(1)
+                    .explicitBadge(track.isExplicit)
                 if showsArtist || showsAlbum, !isCaptioned(state) {
                     Text([showsArtist ? info.artist.name : nil, showsAlbum ? info.album.title : nil].compactMap { $0 }.joined(separator: " — "))
                         .font(.system(size: 11.5))

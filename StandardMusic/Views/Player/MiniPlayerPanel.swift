@@ -88,6 +88,7 @@ struct MiniPlayerQueueRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(info.track.title)
                     .font(.system(size: 12, weight: .medium))
+                    .explicitBadge(info.track.isExplicit, size: 10)
                 Text(info.artist.name)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)

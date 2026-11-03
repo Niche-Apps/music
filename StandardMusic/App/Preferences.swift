@@ -26,6 +26,8 @@ enum Pref {
     static let customEngineModel = "customEngineModel"
     static let scorePlanning = "scorePlanning"
     static let maxSongMinutes = "maxSongMinutes"
+    /// Explicit lyrics allowed (asked during onboarding). Read by StandardKit's SongWriter.
+    static let allowExplicit = ContentRating.allowExplicitKey
     /// Set by Settings › Library › Erase; the library folder is moved to the Trash on next launch.
     static let eraseLibraryOnLaunch = "eraseLibraryOnLaunch"
 

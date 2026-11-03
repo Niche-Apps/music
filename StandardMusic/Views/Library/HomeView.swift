@@ -372,6 +372,9 @@ struct StudioHero: View {
             .accessibilityValue(Spoken.recording(fraction: active.fraction, stage: active.stageLabel, remaining: active.remaining))
             .accessibilityAddTraits(.isHeader)
             Spacer()
+            Button("Stop", systemImage: "stop.fill") { model.stopRecording() }
+                .buttonStyle(.glass)
+                .help("Stop recording (⌘.)")
             Button("Show Album") {
                 library.reveal = active.trackID
                 model.show(.album(active.albumID))

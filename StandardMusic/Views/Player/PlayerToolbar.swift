@@ -127,6 +127,7 @@ struct PlayerLCD: View {
                         .font(.system(size: 11.5, weight: .semibold))
                         .lineLimit(1)
                         .accessibilityLabel("Now playing, \(info.track.title)")
+                        .explicitBadge(info.track.isExplicit, size: 10)
                     HStack(spacing: 0) {
                         Button(info.artist.name) { model.show(.artist(info.artist.id)) }
                             .accessibilityHint("Goes to the artist")

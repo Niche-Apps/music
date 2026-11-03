@@ -13,6 +13,7 @@ public struct SongWriter: Sendable {
     struct Payload: Decodable, Sendable {
         var lyrics: String
         var styleTags: String
+        var explicit: Bool
     }
 
     /// Ensures the artist has a fixed voice and the track has lyrics; returns the updated track.
@@ -28,7 +29,14 @@ public struct SongWriter: Sendable {
         let schema = Schema.object([
             "lyrics": Schema.string(),
             "styleTags": Schema.string(),
+            "explicit": Schema.boolean,
         ])
+        let mayBeExplicit = ContentRating.mayBeExplicit(
+            trackID: info.track.id, genres: [info.artist.primaryGenre] + info.artist.genres,
+            isInstrumental: info.track.isInstrumental)
+        let rating = mayBeExplicit
+            ? "Content: this is one of the artist's explicit songs (the album gets a Parental Advisory). Use some strong language and/or frank adult content, the way this artist would: in character, landing where it hits hardest, not in every line, and never slurs."
+            : "Content: keep it clean — no profanity, slurs or graphic sexual content (radio-edit clean)."
         let prompt = """
             Artist: \(info.artist.name) (\(info.artist.primaryGenre), \(info.artist.origin))
             Artist soul: \(info.artist.soul)
@@ -36,26 +44,38 @@ public struct SongWriter: Sendable {
             Track \(info.track.trackNumber) of \(siblings.count): "\(info.track.title)"
             Song notes: \(info.track.details)
             Current style tags: \(info.track.styleTags)
+            \(GenreSound.guide(for: [info.artist.primaryGenre] + info.artist.genres))
             The singer's voice (fixed): \(info.artist.voice). Lead: \(info.track.vocal). Tempo: \(info.track.bpm.map { "\($0) BPM" } ?? "natural"). Mood: \(info.track.mood).
             \(previous.isEmpty ? "" : "Earlier songs on the record (avoid repeating their images): \(previous.joined(separator: "; "))")
 
+            Lyrical register for this song: \(LyricMode.brief(albumID: info.album.id, trackNumber: info.track.trackNumber, trackCount: siblings.count, genres: [info.artist.primaryGenre] + info.album.genres))
+
+            \(rating)
+
             Write the lyrics as this artist would — their voice, era and idiom — for a complete song of about 2½–4 minutes.
+            Treat the song notes as mood and sound, not a script: don't narrate their theme, and don't explain the feeling. \
+            Avoid the tidy short story told through household objects (kettles, mugs, coats, bus fares, keys, kitchen \
+            lights). Prefer lines that sound true and resist paraphrase over lines that make the meaning clear; leave room \
+            for the listener to wonder what it's about.
             Format strictly:
             - Section headers on their own line, from: [Intro], [Verse], [Pre-Chorus], [Chorus], [Bridge], [Interlude], [Outro]. [Intro], [Interlude] and [Outro] may be followed by an empty line for instrumental passages.
             - A blank line between sections. 4–6 short singable lines per verse, a memorable repeated chorus that appears 2–3 times verbatim.
             - Typically: [Intro], [Verse], [Pre-Chorus], [Chorus], [Verse], [Chorus], [Bridge], [Chorus], [Outro]. Adapt to the genre (e.g. fewer words for ambient/electronic, longer verses for hip hop).
             - No notes, no chords, no performer names, no title line.
             - If the song notes describe an instrumental or wordless piece, write only a few wordless vocal lines (e.g. "Ooh, ooh" or "Ah") or leave sections empty — but keep the section headers so the arrangement has a shape.
-            styleTags: the final tag line for the music model: 9–18 comma-separated words — language, genre, era/production feel, 3–5 instruments, mood, tempo word. Never describe the singer; their fixed voice is added automatically.
+            explicit: true only if the lyrics you wrote contain strong language or explicit sexual/drug content.
+            styleTags: the final tag line for the music model: 9–18 comma-separated words — language, genre, era/production feel, 3–5 instruments, mood, tempo word. Never describe the singer; their fixed voice is added automatically. The music model only hears these tags, so they must sound unmistakably like \(info.artist.primaryGenre): start with the genre, use its defining instruments and production, and drop any instruments or texture words ("tactile", "room tone", "felt", "intimate") that pull it toward a different genre.
             """
         let p = try await client.json(
             Payload.self, schemaName: "song", schema: schema,
-            instructions: "You are a gifted songwriter who writes in other artists' voices. Concrete images, natural rhyme, no clichés.",
+            instructions: "You are a gifted songwriter who writes in other artists' voices. You trust ambiguity: fresh, strange, singable lines, natural or slant rhyme, no clichés, never spelling out what a song means.",
             prompt: prompt, effort: "low")
         let lyrics = Self.clean(p.lyrics)
         let tags = p.styleTags.trimmingCharacters(in: .whitespacesAndNewlines)
+        let explicit = ContentRating.containsExplicitLanguage(lyrics) || (mayBeExplicit && p.explicit)
         return try db.modifyTrack(trackID) {
             $0.lyrics = lyrics
+            $0.isExplicit = explicit
             if !tags.isEmpty { $0.styleTags = tags }
         } ?? info.track
     }

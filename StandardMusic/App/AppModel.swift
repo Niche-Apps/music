@@ -449,4 +449,12 @@ final class AppModel {
     func flash(_ message: String) {
         toast = message
     }
+
+    /// Stop Recording: the studio stops and forgets its queue. If the player was waiting on a song
+    /// that isn't recorded yet, it stops waiting too. Playing anything starts the studio again.
+    func stopRecording() {
+        recording.stopAll()
+        if player.isWaiting { player.stop() }
+        flash("Recording stopped. Play a song to start again.")
+    }
 }

@@ -150,6 +150,7 @@ struct QueueRow: View {
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 1) {
                 Text(info.track.title).font(.system(size: 12.5, weight: isCurrent ? .semibold : .regular)).lineLimit(1)
+                    .explicitBadge(info.track.isExplicit, size: 10)
                 Group {
                     switch state {
                     case .recording, .waiting, .queued, .failed:

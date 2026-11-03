@@ -110,6 +110,7 @@ struct MiniPlayerView: View {
                             Text(info.track.title)
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(.white)
+                                .explicitBadge(info.track.isExplicit)
                             Text("\(info.artist.name) — \(info.album.title)")
                                 .font(.system(size: 12))
                                 .foregroundStyle(.white.opacity(0.7))

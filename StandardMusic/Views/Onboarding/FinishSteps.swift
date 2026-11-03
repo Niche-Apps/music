@@ -6,6 +6,7 @@ import SwiftUI
 struct NotesStep: View {
     @Bindable var flow: OnboardingFlow
     @FocusState private var focused: Bool
+    @AppStorage(Pref.allowExplicit) private var allowExplicit = false
 
     private let suggestions = [
         "More female vocals", "Nothing too heavy", "Lots of instrumentals", "Love a big chorus",
@@ -32,6 +33,8 @@ struct NotesStep: View {
                     .glassEffect(.regular, in: .rect(cornerRadius: 18))
                 SuggestionChips(items: suggestions, isOn: contains) { add($0) }
                     .frame(width: 620)
+                ExplicitChoice(allowExplicit: $allowExplicit)
+                    .padding(.top, 6)
             }
             Spacer(minLength: 16)
             StepFooter(
@@ -57,6 +60,45 @@ struct NotesStep: View {
         }
         let trimmed = flow.notes.trimmingCharacters(in: .whitespacesAndNewlines)
         flow.notes = trimmed.isEmpty ? "\(chip)." : "\(trimmed)\(trimmed.hasSuffix(".") ? "" : ".") \(chip)."
+    }
+}
+
+/// "Explicit lyrics?" — clean only, or the occasional explicit song (marked E).
+private struct ExplicitChoice: View {
+    @Binding var allowExplicit: Bool
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text("Explicit lyrics?")
+                .font(.system(size: 15, weight: .semibold))
+            HStack(spacing: 8) {
+                option("Keep it clean", systemImage: "checkmark.shield", selected: !allowExplicit) { allowExplicit = false }
+                option("Explicit is fine", systemImage: "e.square", selected: allowExplicit) { allowExplicit = true }
+            }
+            Text(allowExplicit
+                ? "Now and then a song will have strong language, more in genres like hip hop. Marked with an E."
+                : "Every song will be radio-clean. You can change this in Settings.")
+                .font(.system(size: 12.5))
+                .foregroundStyle(.white.opacity(0.6))
+                .contentTransition(.opacity)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func option(_ title: String, systemImage: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(.snappy) { action() }
+        } label: {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 13, weight: .medium))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .foregroundStyle(selected ? .white : .white.opacity(0.8))
+                .background(Capsule().fill(selected ? AnyShapeStyle(Color.pink.gradient) : AnyShapeStyle(.white.opacity(0.1))))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityChoice(selected: selected)
     }
 }
 

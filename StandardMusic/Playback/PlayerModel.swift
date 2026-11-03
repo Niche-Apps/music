@@ -202,6 +202,8 @@ final class PlayerModel {
         self.context = context
         var entries = trackIDs.map { Entry(trackID: $0) }
         unshuffled = entries
+        // Choosing music is the listener asking for it, even after Stop Recording.
+        recording.resume()
         recording.clearFailures(trackIDs)
         var start = trackID.flatMap { id in entries.firstIndex { $0.trackID == id } } ?? 0
         if shuffled {
@@ -241,6 +243,7 @@ final class PlayerModel {
     func jump(to entry: Entry) {
         guard let i = queue.firstIndex(of: entry) else { return }
         logCurrentPlay(skipped: true)
+        recording.resume()
         load(index: i, autoPlay: true)
     }
 
@@ -274,6 +277,7 @@ final class PlayerModel {
         case .paused: resume()
         case .waiting: break
         case .idle:
+            recording.resume()
             if index != nil { load(index: index!, autoPlay: true) }
         }
     }

@@ -38,6 +38,9 @@ struct AppCommands: Commands {
             Button("Go to Current Song") { AppActions.goToCurrentSong(model, openWindow: openWindow) }
                 .keyboardShortcut("l")
                 .disabled(player.current == nil)
+            Button("Stop Recording") { model.stopRecording() }
+                .keyboardShortcut(".")
+                .disabled(!model.recording.hasWork)
             Divider()
             Button("Increase Volume") { player.volume = min(1, player.volume + 0.1) }
                 .keyboardShortcut(.upArrow)

@@ -10,6 +10,7 @@ struct LibrarySettings: View {
     @State private var backingUp = false
     @State private var confirmRetake = false
     @State private var confirmErase = false
+    @AppStorage(Pref.allowExplicit) private var allowExplicit = false
 
     private var backupDirectory: URL { Paths.library.appending(path: "Backups", directoryHint: .isDirectory) }
 
@@ -68,6 +69,10 @@ struct LibrarySettings: View {
                 HStack {
                     Spacer()
                     Button("Retake Taste Quiz…") { confirmRetake = true }
+                }
+                Toggle(isOn: $allowExplicit) {
+                    Text("Allow explicit lyrics")
+                    Text("A few songs, depending on the genre, may have strong language. They’re marked with an E. Applies to songs written from now on.")
                 }
             }
 

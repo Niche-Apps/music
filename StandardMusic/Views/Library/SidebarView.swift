@@ -129,6 +129,8 @@ struct StudioStatusPanel: View {
                             library.reveal = active.trackID
                             model.show(.album(active.albumID))
                         }
+                        Divider()
+                        Button("Stop Recording", systemImage: "stop.fill") { model.stopRecording() }
                     }
                 }
             }

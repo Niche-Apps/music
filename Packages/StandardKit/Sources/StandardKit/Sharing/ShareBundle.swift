@@ -87,6 +87,8 @@ public struct SharedTrack: Codable, Sendable {
     public var bpm: Int?
     public var mood: String
     public var isInstrumental: Bool
+    /// Optional so files shared by earlier versions still open.
+    public var isExplicit: Bool?
     public var seed: Int64
     /// Path inside the archive, when the recording is included.
     public var audio: String?
@@ -219,7 +221,7 @@ public struct ShareBundler: Sendable {
                         id: track.id, discNumber: track.discNumber, trackNumber: track.trackNumber,
                         title: track.title, details: track.details, styleTags: track.styleTags, lyrics: track.lyrics,
                         vocal: track.vocal, bpm: track.bpm, mood: track.mood, isInstrumental: track.isInstrumental,
-                        seed: track.seed, audio: audio, duration: audio == nil ? nil : track.duration,
+                        isExplicit: track.isExplicit, seed: track.seed, audio: audio, duration: audio == nil ? nil : track.duration,
                         loudness: audio == nil ? nil : track.loudness))
             }
             sharedAlbums.append(
@@ -381,7 +383,10 @@ public struct ShareBundler: Sendable {
                             isInstrumental: shared.isInstrumental)
                         track.seed = shared.seed
                     }
-                    if track.lyrics == nil { track.lyrics = shared.lyrics }
+                    if track.lyrics == nil {
+                        track.lyrics = shared.lyrics
+                        track.isExplicit = shared.isExplicit ?? false
+                    }
                     if !track.isPlayable, let path = audio[track.id] {
                         track.status = .ready
                         track.audioPath = path

@@ -381,6 +381,7 @@ public actor LibraryBuilder {
             Rules:
             - Names must be original and must NOT be the name of any real artist, band or alias. Mix naming styles: personal names, band names, one-word names, "The …", producer aliases, non-English names where the origin suggests it.
             - Feel like real careers: varied countries and cities, formation years from the 1960s to 2025 shaped by the genre and the listener's eras.
+            - The listener profile decides WHICH genres and artists to include, not how they sound. Each artist must sound authentically like its slot's genre as real fans know it; don't carry the listener's sonic preferences (e.g. "intimate", "warm", "acoustic") into other genres. An arena rock band is loud and huge; an electropop act is synthetic and glossy.
             - albumCount: mostly 2–4; some 1 (newcomers or one-album wonders); a few long careers of 6–10.
             - Every artist needs its own world — distinct settings, subjects, eras, personas and visual identity. Don't repeat concepts already in the library:
             \(concepts.isEmpty ? "(none yet)" : concepts.joined(separator: "\n"))
@@ -602,7 +603,8 @@ public actor LibraryBuilder {
             Sounds a bit like (never mention these): \(artist.touchstones.joined(separator: ", "))
             Releases to plan: \(artist.plannedAlbumCount)
 
-            For context, the listener: \(profile.headline.isEmpty ? profile.coreGenres.joined(separator: ", ") : profile.headline)
+            \(GenreSound.guide(for: [artist.primaryGenre] + artist.genres))
+            Write this artist as a true, idiomatic \(artist.primaryGenre) act: their soul, voice and every release should sound like the genre does on real records, not softened toward any other style.
             Album titles already used by other artists in this library — don't reuse their words or imagery: \(usedTitles.joined(separator: "; "))
 
             Fields:
@@ -700,6 +702,8 @@ public actor LibraryBuilder {
 
             Discography: \(siblings.map { "\($0.releaseYear) \($0.title) (\($0.kind.label))" }.joined(separator: "; "))
 
+            \(GenreSound.guide(for: [artist.primaryGenre] + artist.genres))
+
             Now write the \(album.kind.label.lowercased()) "\(album.title)" (\(album.releaseYear), \(album.label)).
             Album soul: \(album.soul)
 
@@ -707,8 +711,8 @@ public actor LibraryBuilder {
             - notes: 70–130 words of editorial notes like a streaming service's editors' blurb: what it sounds like, where it sits in their story, standout tracks by title. Never mention real artists or that anything is fictional.
             - genres: the album's specific genres.
             - tracks: exactly \(album.trackCount), in sequence order. Titles must feel like real songs by this artist in this era (vary length and style; no numbering).
-              - details (private): 40–80 words: arrangement, instrumentation, groove, vocal approach, emotional arc and lyrical theme, plus structure (e.g. slow intro, double chorus, outro fade).
-              - styleTags: a comma-separated tag line for a music generation model, 9–18 words, in this order: language (usually "English"), genre/subgenre, era/production feel, 3–5 key instruments, mood, tempo word. Never describe the singer — the artist's fixed voice is added automatically. Must reflect this specific song.
+              - details (private): 40–80 words: arrangement, instrumentation, groove, vocal approach, emotional arc and the lyric's mood (a feeling, an image or two, never a plot or a list of objects), plus structure (e.g. slow intro, double chorus, outro fade).
+              - styleTags: a comma-separated tag line for a music generation model, 9–18 words, in this order: language (usually "English"), genre/subgenre, era/production feel, 3–5 key instruments, mood, tempo word. Never describe the singer — the artist's fixed voice is added automatically. Must reflect this specific song, and must sound like the artist's genre: name the genre and use its defining instruments and production (a ballad by a rock band is still a rock ballad). Avoid vague texture words like "tactile", "room tone", "felt", "intimate" unless the genre really calls for them.
               - bpm: realistic tempo.
             """
         let p = try await textLimit.run {
@@ -799,7 +803,6 @@ public actor LibraryBuilder {
         let albums = try await db.reader.read { db in
             try Album.filter(Column("artistID") == artistID).order(Column("releaseYear")).fetchAll(db)
         }
-        let profile = profile()
         let schema = Schema.object([
             "title": Schema.string(),
             "year": Schema.integer(),
@@ -814,7 +817,7 @@ public actor LibraryBuilder {
             \(artist.name) (\(artist.primaryGenre), \(artist.origin)) is releasing something new.
             Artist soul: \(artist.soul)
             Discography so far: \(albums.map { "\($0.releaseYear) \($0.title) (\($0.kind.label)): \($0.soul.prefix(220))" }.joined(separator: "\n"))
-            \(brief.map { "The listener asked for: \($0)\n" } ?? "")Listener taste: \(profile.headline)
+            \(brief.map { "The listener asked for: \($0)\n" } ?? "")\(GenreSound.guide(for: [artist.primaryGenre] + artist.genres))
 
             Plan their next release, dated \(max(2026, (albums.last?.releaseYear ?? 2025) + 1)) or later. It should feel like the natural next chapter — evolve the sound in a believable direction.
             soul (private): 90–160 words mapping concept, production and the tone/tempo/energy of the sequence. coverConcept: specific art direction distinct from earlier covers. trackCount: album 8–12, ep 4–6, single 1–3.

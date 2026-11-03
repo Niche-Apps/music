@@ -60,6 +60,7 @@ struct MenuBarView: View {
 extension RecordingQueue {
     /// Songs in line behind the one recording now.
     var waitingCount: Int {
+        if isStopped { return 0 }
         var seen = Set<ID>()
         return (playbackDemand + requested).filter { $0 != active?.trackID && failures[$0] == nil && seen.insert($0).inserted }.count
     }
@@ -101,6 +102,7 @@ struct MenuBarNowPlaying: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(info.track.title)
                                 .font(.system(size: 13, weight: .semibold))
+                                .explicitBadge(info.track.isExplicit, size: 10)
                             Text(info.artist.name)
                                 .font(.system(size: 12))
                                 .foregroundStyle(.secondary)
@@ -236,7 +238,14 @@ struct MenuBarStudioStatus: View {
                     .font(.system(size: 11, weight: .medium).monospacedDigit())
                     .foregroundStyle(.secondary)
                     .contentTransition(.numericText())
+                    .accessibilityHidden(true)
             }
+            Button { model.stopRecording() } label: {
+                Image(systemName: "stop.circle.fill").font(.system(size: 16)).foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Stop recording")
+            .accessibilityLabel("Stop recording")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
@@ -244,6 +253,7 @@ struct MenuBarStudioStatus: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(recording.active.map { "Recording “\($0.title)”" } ?? "Getting the studio ready")
         .accessibilityValue(studioValue(recording.active, waiting: waiting))
+        .accessibilityAction(named: "Stop recording") { model.stopRecording() }
     }
 
     private func studioValue(_ active: RecordingQueue.Activity?, waiting: Int) -> String {
