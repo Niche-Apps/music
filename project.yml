@@ -60,8 +60,8 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CODE_SIGN_ENTITLEMENTS: StandardMusic/StandardMusic.entitlements
         SWIFT_STRICT_CONCURRENCY: complete
-        MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: "2"
+        MARKETING_VERSION: "1.1"
+        CURRENT_PROJECT_VERSION: "3"
   StandardMusicEngine:
     type: tool
     platform: macOS
