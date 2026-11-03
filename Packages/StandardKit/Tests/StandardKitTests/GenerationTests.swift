@@ -62,28 +62,55 @@ import Testing
 }
 
 @Suite struct GenreSoundTests {
-    @Test func electropopLosesFolkInstrumentsAndGainsItsSound() {
+    @Test func electropopStartsWithItsCanonicalTagsAndLosesFolkInstruments() {
         let tags = "English, electropop, tactile 2020s production, nylon guitar, felt piano, soft kick, tender, midtempo"
-        let out = GenreSound.enforce(tags: tags, genres: ["electropop"])
+        let out = GenreSound.recordingTags(tags: tags, genres: ["electropop"])
+        #expect(out.hasPrefix("electropop, synth-pop, dance pop, synthesizer, synth bass, drum machine"))
         #expect(!out.contains("nylon guitar"))
         #expect(!out.contains("felt piano"))
-        #expect(out.contains("glossy"))
-        #expect(out.contains("synthesizers"))
+        #expect(!out.contains("production"))
+        #expect(!out.contains("English"))
+        #expect(out.hasSuffix("soft kick, tender, midtempo"))
     }
 
-    @Test func arenaRockDropsHarmoniumKeepsGuitars() {
-        let tags = "Spanish, arena rock, raw 1986 production, electric guitars, harmonium, toms, urgent, fast"
-        let out = GenreSound.enforce(tags: tags, genres: ["arena rock", "hard rock"])
+    /// The listening test's failure: synth pads on an arena rock song made YuE2 play synth-pop.
+    @Test func arenaRockDropsSynthsAndKeepsItsLanguage() {
+        let tags = "Spanish, arena rock, polished 1980s stadium production, electric guitars, synth pads, harmonium, toms, urgent, fast"
+        let out = GenreSound.recordingTags(tags: tags, genres: ["arena rock", "hard rock"])
+        #expect(out.hasPrefix("arena rock, hard rock, 80s rock, distorted electric guitar, power chords"))
+        #expect(!out.contains("synth"))
         #expect(!out.contains("harmonium"))
-        #expect(out.contains("electric guitars"))
-        #expect(out.contains("stadium-sized"))
+        #expect(!out.contains("stadium production"))
+        #expect(out.hasSuffix("electric guitars, toms, urgent, fast, Spanish"))
+        // Each tag appears once even when the writer repeats the genre.
+        let parts = out.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        #expect(parts.count == Set(parts).count)
+    }
+
+    @Test func primaryGenreLeadsTheReferenceTags() {
+        let out = GenreSound.recordingTags(tags: "English, folk-inflected indie rock, picked guitars, watchful, brisk", genres: ["Folk-Inflected Indie Rock", "indie folk"])
+        #expect(out.hasPrefix("folk-inflected indie rock, indie rock, alternative rock, electric guitar"))
+        #expect(out.hasSuffix("picked guitars, watchful, brisk"))
+    }
+
+    @Test func unknownGenresKeepTheirOwnTagsInCanonicalForm() {
+        #expect(GenreSound.recordingTags(tags: "English, polka, accordion, tuba, a very lively village dance production, jolly", genres: ["polka"])
+            == "polka, accordion, tuba, jolly")
+    }
+
+    @Test func everyReferenceLeadsWithAGenreName() {
+        for ref in GenreSound.references {
+            let tags = ref.tags.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            #expect(tags.count >= 5 && tags.count <= 10, "\(ref.keys[0])")
+            #expect(tags.allSatisfy { $0.split(separator: " ").count <= GenreSound.maxTagWords }, "\(ref.keys[0])")
+            #expect(!tags.contains { tag in ref.avoid.lowercased().split(separator: ",").contains { tag.lowercased().contains($0.trimmingCharacters(in: .whitespaces)) } }, "\(ref.keys[0])")
+        }
     }
 
     @Test func specificGenresMatchBeforeBroadOnes() {
         #expect(GenreSound.reference(for: ["electropop"])?.keys.first == "electropop")
         #expect(GenreSound.reference(for: ["indie folk-rock"])?.keys.first == "folk rock")
         #expect(GenreSound.reference(for: ["polka"]) == nil)
-        #expect(GenreSound.enforce(tags: "polka, accordion", genres: ["polka"]) == "polka, accordion")
     }
 
     @Test func lyricModesAreStableAndVaried() {
