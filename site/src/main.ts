@@ -307,13 +307,6 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
       ${s.chips ? `<div class="chips">${s.chips.map((c) => `<span><i></i>${c}</span>`).join('')}</div>` : ''}
 `
     if (s.play) el.appendChild(clipCard(lib, studioTrack.track, player, 'in-copy'))
-    if (flow) {
-      // Phones: the copy sticks just under the scene while its step plays, then is pushed off.
-      const sc = document.createElement('div')
-      sc.className = 'sc'
-      sc.append(...el.childNodes)
-      el.appendChild(sc)
-    }
     copyHost.appendChild(el)
   })
   const copies = [...copyHost.querySelectorAll<HTMLElement>('.step-copy')]
@@ -470,7 +463,6 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
   }
 
   let lastY = NaN
-  const flowGeo = { tops: [] as number[], travel: [] as number[], lead: 0 }
   // Flow mode: the camera eases toward its target instead of jumping with the scroll.
   const camNow = { x: 0, y: 0, s: 0, init: false }
   let camTarget = { x: 0, y: 0, s: 1 }
@@ -563,15 +555,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
     if (!NO.has('cursor')) updateCursor(s)
 
     if (flow) {
-      // Each block brightens as it comes on stage and dims as it leaves, continuously.
-      // From cached geometry: where this block's text sits relative to its stuck position.
-      if (!NO.has('copy') && flowGeo.tops.length) copies.forEach((c, i) => {
-        const top = flowGeo.tops[i] - scrollY
-        const y = Math.max(flowGeo.lead, top) - Math.max(0, flowGeo.lead - (top + flowGeo.travel[i]))
-        const v = y >= flowGeo.lead ? 1 - smooth(clamp((y - flowGeo.lead) / 160)) : 1 - smooth(clamp((flowGeo.lead - y) / 70))
-        const o = (0.22 + 0.78 * v).toFixed(2)
-        if (c.style.opacity !== o) c.style.opacity = o
-      })
+      // Phones: card opacity follows scroll (updateCopy).
     } else copies.forEach((c, i) => {
       let d = s - i
       if (i === steps.length - 1) d = Math.min(d, 0.5)
@@ -610,20 +594,15 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
   }
 
   if (flow) {
-    // Cached block positions → step progress, from native scroll only (no layout reads per frame).
-    let tops: number[] = [], travel: number[] = []
+    // Phones: the tour is a stack of cards. Each step's copy snaps into place under the scene, and
+    // its animation then plays over time, slowly, until the next card arrives. Scrolling picks the
+    // card; it doesn't scrub the animation (that was far too fast on a small screen).
+    let tops: number[] = []
     let lead = 0
     const measure = () => {
-      measureGeo()
-      Object.assign(flowGeo, { tops, travel, lead })
-    }
-    const measureGeo = () => {
-      // A step plays while its copy is stuck under the scene: from the moment it arrives there
-      // until the end of its block starts pushing it off.
-      lead = 56 + L.sceneH + 26
+      lead = 56 + L.sceneH + 22
       tourEl.style.setProperty('--copy-top', `${lead}px`)
       tops = copies.map((c) => c.getBoundingClientRect().top + scrollY)
-      travel = copies.map((c) => Math.max(1, c.offsetHeight - (c.firstElementChild as HTMLElement).offsetHeight))
     }
     // The scene is position:fixed at the top and never moved from script (anything scroll-linked
     // in JS trails native scrolling on iOS). The opaque hero slides off it, and the sections after
@@ -633,28 +612,70 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
       const off = !e.isIntersecting
       stage.classList.toggle('away', off)
       fadeEl.classList.toggle('away', off)
-    }, { rootMargin: '0px 0px 0px 0px' }).observe(tourEl)
-    const flowS = () => {
-      const line = scrollY + lead
-      if (line < tops[0]) return -Math.min(1, (tops[0] - line) / innerHeight)
-      for (let i = copies.length - 1; i >= 0; i--) if (line >= tops[i]) return i + clamp((line - tops[i]) / travel[i])
-      return 0
+    }).observe(tourEl)
+
+    /** The card nearest its resting place under the scene (-1 while still in the hero). */
+    const nearest = () => {
+      if (!tops.length || scrollY + lead < tops[0] - innerHeight * 0.3) return -1
+      let best = 0
+      for (let i = 1; i < tops.length; i++) if (Math.abs(tops[i] - scrollY - lead) < Math.abs(tops[best] - scrollY - lead)) best = i
+      return best
     }
+    // Cards brighten as they settle into place and dim as they move away.
+    const updateCopy = () => {
+      if (NO.has('copy') || !tops.length) return
+      const room = Math.max(160, innerHeight - lead)
+      copies.forEach((c, i) => {
+        const v = 1 - smooth(clamp(Math.abs(tops[i] - scrollY - lead) / (room * 0.75)))
+        const o = (0.2 + 0.8 * v).toFixed(2)
+        if (c.style.opacity !== o) c.style.opacity = o
+      })
+    }
+
+    // Playback: seconds per step (longer steps get proportionally more time).
+    const SECONDS = 6.5
+    let active = -2
+    let t = 0
+    let playRaf = 0
+    let lastT = 0
+    const play = (now: number) => {
+      const dt = lastT ? Math.min(100, now - lastT) : 16
+      lastT = now
+      const len = steps[active]?.len ?? 1
+      t = Math.min(1, t + dt / (SECONDS * 1000 * len))
+      apply(t, true, active + Math.min(t, 0.999))
+      if (t < 1) playRaf = requestAnimationFrame(play)
+      else { playRaf = 0; lastT = 0 }
+    }
+    const select = (i: number) => {
+      if (i === active) return
+      active = i
+      cancelAnimationFrame(playRaf)
+      playRaf = 0
+      lastT = 0
+      t = 0
+      if (i < 0) { apply(0, true, 0); return } // in the hero: the first screen waits at its start
+      apply(0, true, i)
+      playRaf = requestAnimationFrame(play)
+    }
+
     let raf = 0
     const onScroll = () => { if (!raf) raf = requestAnimationFrame(() => {
       raf = 0
-      apply(scrollY / innerHeight, false, Math.max(0, flowS()))
+      updateCopy()
+      select(nearest())
     }) }
     addEventListener('scroll', onScroll, { passive: true })
+    const refresh = () => { measure(); updateCopy(); active = -2; select(nearest()) }
     // iOS resizes the viewport as its toolbars show and hide; only re-layout for real width changes.
     let lastW = innerWidth
     addEventListener('resize', () => {
-      if (innerWidth !== lastW) { lastW = innerWidth; L = layout() }
-      measure(); apply(scrollY / innerHeight, true, Math.max(0, flowS()))
+      if (innerWidth !== lastW) { lastW = innerWidth; L = layout(); refresh() }
+      else { measure(); updateCopy() }
     })
-    requestAnimationFrame(() => { measure(); apply(scrollY / innerHeight, true, Math.max(0, flowS())) })
-    // Fonts and images settle the copy's height after load.
-    new ResizeObserver(() => { measure(); apply(scrollY / innerHeight, true, Math.max(0, flowS())) }).observe(copyHost)
+    requestAnimationFrame(refresh)
+    // Fonts and images settle the cards' heights after load.
+    new ResizeObserver(() => { measure(); updateCopy() }).observe(copyHost)
     return
   }
   const span = (total * 100 + 195 - 100) / 100

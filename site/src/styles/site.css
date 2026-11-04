@@ -258,11 +258,11 @@ body.flow .flow-hero { box-shadow: 0 18px 36px rgba(0,0,0,.55); }
 .tour.flow .stage .extras::before { content: ''; position: absolute; inset: 8px 10px 10px; border-radius: 18px; background: rgba(8,9,13,.82); opacity: var(--dim, 0); will-change: opacity; }
 .tour.flow .extras .menubar { top: 8px; left: 10px; right: 10px; border-radius: 18px 18px 0 0; }
 .tour.flow .steps { z-index: 1; position: relative; inset: auto; width: auto; height: auto; padding: 8px 22px 30vh; pointer-events: auto; overflow: visible; }
-.tour.flow .step-copy { position: relative; top: auto; left: auto; right: auto; transform: none !important; opacity: .25;
-  padding: 0; pointer-events: auto !important; }
-/* The room each step plays in (inside the content box, so the copy can stick through it). */
-.tour.flow .step-copy::after { content: ''; display: block; height: calc(46vh * var(--len, 1)); }
-.tour.flow .step-copy .sc { position: sticky; top: var(--copy-top, 50vh); }
+.tour.flow .step-copy { position: relative; top: auto; left: auto; right: auto; transform: none !important; opacity: .2;
+  padding: 4px 0 24px; min-height: calc(100svh - var(--copy-top, 50vh)); box-sizing: border-box; pointer-events: auto !important;
+  scroll-snap-align: start; scroll-snap-stop: always; scroll-margin-top: calc(var(--copy-top, 50vh) - 4px); }
+/* Phones: steps are cards that snap into place under the scene. */
+html:has(body.flow) { scroll-snap-type: y proximity; }
 .tour.flow .step-copy h3 { font-size: 27px; line-height: 1.08; }
 .tour.flow .step-copy p { font-size: 16px; line-height: 1.55; margin-top: 12px; }
 .tour.flow .step-copy .eyebrow { margin-bottom: 10px; }
