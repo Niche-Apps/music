@@ -82,6 +82,28 @@ public struct SongWriter: Sendable {
 
     /// Gives an artist written before voices existed a permanent voice, derived from their soul and the
     /// vocals of songs already recorded. The first writer wins so concurrent songs agree.
+    /// Lyrics for Create › Custom: a complete, sectioned song in the given style, optionally about
+    /// something or titled. The listener edits them before recording.
+    public func draft(style: String, about: String) async throws -> String {
+        struct Draft: Decodable, Sendable { var lyrics: String }
+        let prompt = """
+            Write lyrics for a song in this style: \(style.isEmpty ? "any style that suits the idea" : style)
+            \(about.isEmpty ? "" : "It's about, or titled: \(about)")
+            \(GenreSound.guide(for: [style]))
+            Lyrical register: \(LyricMode.brief(albumID: newID(), trackNumber: 1, trackCount: 1, genres: [style]))
+            Content: keep it clean unless the idea clearly asks otherwise.
+            Prefer lines that sound true and resist paraphrase over lines that explain the feeling.
+            Format strictly: section headers on their own line ([Intro], [Verse], [Pre-Chorus], [Chorus], [Bridge], [Outro]), \
+            a blank line between sections, 4–6 short singable lines per verse, a chorus repeated 2–3 times verbatim. \
+            No title line, no notes, no chords.
+            """
+        let d = try await client.json(
+            Draft.self, schemaName: "draft", schema: Schema.object(["lyrics": Schema.string()]),
+            instructions: "You are a gifted songwriter. Fresh, strange, singable lines; natural or slant rhyme; no clichés.",
+            prompt: prompt, effort: "low")
+        return Self.clean(d.lyrics)
+    }
+
     func ensureVoice(_ artist: Artist) async throws -> String {
         struct VoicePayload: Decodable, Sendable { var voice: String }
         let recorded = try await db.reader.read { db in

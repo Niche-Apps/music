@@ -27,3 +27,26 @@ import Testing
         #expect(merged.map(\.id) == [1, 2])
     }
 }
+
+@Suite struct CustomSongTests {
+    @Test func keepsListenerWordsWhenModelRewritesThem() {
+        let mine = "Pulled the curtains on the afternoon\nlet the radiator talk me down"
+        let sectioned = "[Verse]\nPulled the curtains on the afternoon\nlet the radiator talk me down"
+        #expect(LibraryBuilder.customLyrics(sectioned, fallback: mine, instrumental: false) == SongWriter.clean(sectioned))
+        let rewritten = "[Verse]\nI closed the blinds at noon\nthe heater calmed me down"
+        let kept = LibraryBuilder.customLyrics(rewritten, fallback: mine, instrumental: false)
+        #expect(kept.contains("Pulled the curtains on the afternoon"))
+        #expect(kept.hasPrefix("[Verse]"))
+    }
+
+    @Test func instrumentalHasSectionsOnly() {
+        let l = LibraryBuilder.customLyrics("ignored", fallback: "", instrumental: true)
+        #expect(l.contains("[Chorus]"))
+        #expect(!l.split(separator: "\n").contains { !$0.hasPrefix("[") })
+    }
+
+    @Test func customTagsAreKeptInOrder() {
+        #expect(GenreSound.customRecordingTags(tags: "grunge, 90s alternative rock, distorted guitars, Grunge, female vocals")
+            == "grunge, 90s alternative rock, distorted guitars, female vocals")
+    }
+}

@@ -314,7 +314,12 @@ final class RecordingQueue {
             let voice = (try? await db.reader.read { db in
                 try String.fetchOne(db, sql: "SELECT voice FROM artist WHERE id = ?", arguments: [track.artistID])
             }) ?? ""
-            let genreTags = GenreSound.recordingTags(tags: track.styleTags, genres: [info.artist.primaryGenre] + info.artist.genres)
+            // A custom song can put an artist in a different style: its album's genre wins then.
+            let genres = info.album.primaryGenre.isEmpty || info.album.primaryGenre == info.artist.primaryGenre
+                ? [info.artist.primaryGenre] + info.artist.genres : [info.album.primaryGenre] + info.album.genres
+            let genreTags = track.isCustom
+                ? GenreSound.customRecordingTags(tags: track.styleTags)
+                : GenreSound.recordingTags(tags: track.styleTags, genres: genres)
             let style = Voice.recordingStyle(tags: genreTags, voice: voice, isInstrumental: track.isInstrumental)
             let maxSeconds = 60 * max(1, UserDefaults.standard.double(forKey: Pref.maxSongMinutes))
             let job = EngineJob(

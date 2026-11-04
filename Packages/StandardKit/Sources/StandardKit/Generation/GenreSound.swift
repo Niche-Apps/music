@@ -206,6 +206,15 @@ extension GenreSound {
     /// instrument). Off-genre instruments and long descriptive phrases are dropped. In listening tests
     /// this moved arena rock that the model rendered as synth-pop back to arena rock, and made
     /// genres measurably further apart.
+    /// A listener's own style (Create › Custom), cleaned but not rewritten: their genre and
+    /// instruments stay first and nothing is dropped for being "off-genre".
+    public static func customRecordingTags(tags: String) -> String {
+        var seen = Set<String>()
+        return tags.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }
+            .prefix(14).joined(separator: ", ")
+    }
+
     public static func recordingTags(tags: String, genres: [String]) -> String {
         let ref = reference(for: genres)
         let avoid = (ref?.avoid ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }

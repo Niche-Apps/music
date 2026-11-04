@@ -68,6 +68,21 @@ case "roster":
         let s = await builder.currentStatus
         if s.phase == .finished || s.phase == .failed { print(s); break }
     }
+case "custom":
+    // sm-dev custom <dir> <style> <lyrics file or -> [artistID]
+    let lyrics = args[4] == "-" ? "" : try String(contentsOfFile: args[4], encoding: .utf8)
+    let builder = LibraryBuilder(db: db, client: client, catalog: catalog, artwork: ArtworkStore(root: dir.appending(path: "Artwork")))
+    let albumID = try await builder.createCustomSong(CustomSongRequest(
+        lyrics: lyrics, style: args[3], instrumental: lyrics.isEmpty, artistID: args.count > 5 ? args[5] : nil))
+    let info = try db.albumInfo(albumID)!
+    let track = try db.tracks(forAlbum: albumID)[0]
+    print("ARTIST: \(info.artist.name) (\(info.artist.primaryGenre), \(info.artist.origin)) portrait \(info.artist.imagePath ?? "nil")")
+    print("SINGLE: \(info.album.title) [\(info.album.primaryGenre)] cover \(info.album.coverPath ?? "nil")")
+    print("TAGS: \(track.styleTags)")
+    print("RECORDING TAGS: \(GenreSound.customRecordingTags(tags: track.styleTags))")
+    print("LYRICS:\n\(track.lyrics ?? "")")
+case "draft":
+    print(try await SongWriter(client: client, db: db).draft(style: args[3], about: args.count > 4 ? args[4] : ""))
 case "write":
     let t = try await SongWriter(client: client, db: db).prepare(trackID: args[3])
     print(t.styleTags); print(t.lyrics ?? "")

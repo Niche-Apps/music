@@ -185,6 +185,11 @@ public final class AppDatabase: Sendable {
                 t.add(column: "isExplicit", .boolean).notNull().defaults(to: false)
             }
         }
+        m.registerMigration("v5-custom-songs") { db in
+            try db.alter(table: "track") { t in
+                t.add(column: "isCustom", .boolean).notNull().defaults(to: false)
+            }
+        }
         return m
     }
 

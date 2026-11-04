@@ -65,6 +65,12 @@ public enum Schema {
             "additionalProperties": false]
     }
 
+    /// Same as `object(_:)` for properties assembled at runtime (order doesn't matter to the API).
+    public static func object(_ properties: [String: JSON]) -> JSON {
+        ["type": "object", "properties": .object(properties), "required": .array(properties.keys.sorted().map { .string($0) }),
+            "additionalProperties": false]
+    }
+
     public static func array(_ items: JSON, min: Int? = nil, max: Int? = nil) -> JSON {
         var o: [String: JSON] = ["type": "array", "items": items]
         if let min { o["minItems"] = .number(Double(min)) }

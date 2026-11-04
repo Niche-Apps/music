@@ -540,7 +540,7 @@ public actor LibraryBuilder {
         publishProgress(batchID)
     }
 
-    private func setActivity(_ artistID: ID, _ text: String?) {
+    func setActivity(_ artistID: ID, _ text: String?) {
         activity[artistID] = text
         if let text { publish { $0.activity = text } }
     }
@@ -789,7 +789,7 @@ public actor LibraryBuilder {
 
     // MARK: Artwork
 
-    private func paintPortrait(_ artist: Artist) async throws {
+    func paintPortrait(_ artist: Artist) async throws {
         setActivity(artist.id, "Photographing \(artist.name)")
         let prompt = """
             Square artist portrait / press photo for a fictional \(artist.primaryGenre) \(artist.members.count > 1 ? "group" : "artist") called "\(artist.name)" from \(artist.origin), circa \(artist.formedYear + 2).
@@ -805,7 +805,7 @@ public actor LibraryBuilder {
         }
     }
 
-    private func paintCover(_ album: Album, artist: Artist, urgent: Bool = false) async throws {
+    func paintCover(_ album: Album, artist: Artist, urgent: Bool = false) async throws {
         setActivity(artist.id, "Designing the cover of \(album.title)")
         let prompt = """
             Square album cover art for "\(album.title)" by \(artist.name), a \(album.releaseYear) \(album.primaryGenre) \(album.kind.label.lowercased()).

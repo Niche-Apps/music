@@ -22,7 +22,14 @@ struct CreateView: View {
     @State private var data = Data()
     @State private var likeQuery = ""
     @State private var submitting = false
+    @AppStorage("createMode") private var mode = Mode.simple
     @FocusState private var promptFocused: Bool
+
+    enum Mode: String, CaseIterable, Identifiable {
+        case simple, custom
+        var id: String { rawValue }
+        var title: String { self == .simple ? "Simple" : "Custom" }
+    }
 
     static let suggestions = [
         "Late-night jazz from a fictional 1960s Lisbon",
@@ -38,8 +45,15 @@ struct CreateView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 34) {
-                PageHeader(title: "Create", subtitle: "Write new artists into your library. Each one arrives with a story, a discography and cover art.")
-                promptCard
+                PageHeader(title: "Create", subtitle: "Write new artists into your library, or bring your own lyrics and a style and hear them sung.")
+                Picker("Mode", selection: $mode) {
+                    ForEach(Mode.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 220)
+                .accessibilityLabel("Create mode")
+                if mode == .simple { promptCard } else { CustomSongCard(artists: data.artists) }
                 NewReleaseCard(artists: data.artists)
                 HStack(alignment: .top, spacing: 18) {
                     discoverCard
@@ -379,5 +393,159 @@ struct FlowLayout: Layout {
             rowHeight = max(rowHeight, size.height)
         }
         return (CGSize(width: maxX, height: y + rowHeight), points)
+    }
+}
+
+/// Create › Custom: the listener's own lyrics (or ones written for them) and a style of music,
+/// performed by one of their artists or by a new artist invented for the song.
+struct CustomSongCard: View {
+    @Environment(AppModel.self) private var model
+    let artists: [Artist]
+    @State private var lyrics = ""
+    @State private var style = ""
+    @State private var title = ""
+    @State private var instrumental = false
+    @State private var performer: ID?
+    @State private var drafting = false
+    @State private var submitting = false
+    @FocusState private var focus: Field?
+
+    enum Field { case lyrics, style, title }
+
+    static let styleChips = [
+        "pop", "indie rock", "hip hop", "r&b", "electropop", "country", "metal", "jazz", "lo-fi", "synthwave",
+        "female vocals", "male vocals", "upbeat", "melancholic", "acoustic", "808 bass", "80s", "orchestral",
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Lyrics").font(.system(size: 15, weight: .semibold)).accessibilityHeading()
+                    Spacer()
+                    Toggle("Instrumental", isOn: $instrumental).toggleStyle(.switch).controlSize(.small)
+                    Button {
+                        draft()
+                    } label: {
+                        if drafting { Label { Text("Writing…") } icon: { ProgressView().controlSize(.small) } }
+                        else { Label("Write Lyrics for Me", systemImage: "sparkles") }
+                    }
+                    .buttonStyle(.glass)
+                    .controlSize(.small)
+                    .disabled(drafting || instrumental)
+                    .help("Writes a song in the style below (and about the title, if you give one). Edit it before you create.")
+                }
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $lyrics)
+                        .font(.system(size: 14))
+                        .scrollContentBackground(.hidden)
+                        .focused($focus, equals: .lyrics)
+                        .disabled(instrumental)
+                        .accessibilityLabel("Lyrics")
+                    if lyrics.isEmpty {
+                        Text(instrumental ? "No vocals: just the style below." : "[Verse]\nWrite your own lyrics, paste some in, or let Standard Music write them.\n\n[Chorus]\n…")
+                            .font(.system(size: 14)).foregroundStyle(.tertiary)
+                            .padding(.leading, 5).padding(.top, 1)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .padding(12)
+                .frame(height: 220)
+                .opacity(instrumental ? 0.45 : 1)
+                .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(focus == .lyrics ? Color.accentColor.opacity(0.6) : .primary.opacity(0.1)))
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Style of music").font(.system(size: 15, weight: .semibold)).accessibilityHeading()
+                TextField("Genres, instruments, mood, era, vocals — “90s grunge, heavy guitars, female vocals”", text: $style, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 14))
+                    .lineLimit(1 ... 3)
+                    .focused($focus, equals: .style)
+                    .padding(12)
+                    .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(focus == .style ? Color.accentColor.opacity(0.6) : .primary.opacity(0.1)))
+                    .accessibilityLabel("Style of music")
+                FlowLayout(spacing: 6) {
+                    ForEach(Self.styleChips, id: \.self) { chip in
+                        Button("+ \(chip)") { add(chip) }
+                            .buttonStyle(.glass)
+                            .controlSize(.small)
+                            .accessibilityLabel("Add \(chip) to the style")
+                    }
+                }
+            }
+
+            HStack(alignment: .bottom, spacing: 14) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Title").font(.system(size: 13, weight: .semibold))
+                    TextField("Optional", text: $title)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($focus, equals: .title)
+                        .accessibilityLabel("Title, optional")
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Performed by").font(.system(size: 13, weight: .semibold))
+                    Picker("Performed by", selection: $performer) {
+                        Text("A new artist for this song").tag(ID?.none)
+                        if !artists.isEmpty { Divider() }
+                        ForEach(artists.filter(\.isFavorite) + artists.filter { !$0.isFavorite }) { a in
+                            Text(a.name).tag(Optional(a.id))
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 260)
+                }
+                Spacer()
+                Button(action: create) {
+                    if submitting { Label { Text("Creating…") } icon: { ProgressView().controlSize(.small) } }
+                    else { Label("Create", systemImage: "sparkles").frame(minWidth: 80) }
+                }
+                .buttonStyle(.glassProminent)
+                .controlSize(.large)
+                .keyboardShortcut(.return, modifiers: .command)
+                .disabled(!canCreate || submitting)
+            }
+            Text(performer == nil
+                ? "A new artist is invented to fit the style, with a photo, a story and a cover for your single. It starts recording right away."
+                : "Your single gets its own cover and starts recording right away, in that artist’s voice.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(20)
+        .glassEffect(.regular, in: .rect(cornerRadius: 18))
+    }
+
+    private var canCreate: Bool {
+        !style.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || (!instrumental && !lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
+    private func add(_ chip: String) {
+        let current = style.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !current.localizedCaseInsensitiveContains(chip) else { return }
+        style = current.isEmpty ? chip : current + ", " + chip
+    }
+
+    private func draft() {
+        drafting = true
+        Task {
+            if let text = await model.draftLyrics(style: style, about: title) { lyrics = text }
+            drafting = false
+        }
+    }
+
+    private func create() {
+        guard canCreate, !submitting else { return }
+        submitting = true
+        let request = CustomSongRequest(
+            lyrics: lyrics, style: style, title: title.isEmpty ? nil : title, instrumental: instrumental, artistID: performer)
+        Task {
+            if await model.createCustomSong(request) {
+                lyrics = ""
+                title = ""
+            }
+            submitting = false
+        }
     }
 }

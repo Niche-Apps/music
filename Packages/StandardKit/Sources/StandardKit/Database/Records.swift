@@ -199,6 +199,8 @@ public struct Track: Codable, Sendable, Hashable, Identifiable, FetchableRecord,
     public var isInstrumental: Bool
     /// Lyrics contain strong language or explicit themes (shown with an E).
     public var isExplicit: Bool = false
+    /// Written by the listener (Create › Custom): their lyrics and style are recorded as given.
+    public var isCustom: Bool = false
     public var seed: Int64
     public var status: TrackStatus
     public var audioPath: String?

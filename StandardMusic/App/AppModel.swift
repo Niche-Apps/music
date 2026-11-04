@@ -401,6 +401,30 @@ final class AppModel {
         }
     }
 
+    /// Create › Custom: the listener's own lyrics and style, as a single that records and plays.
+    /// Returns false (with a toast) if it couldn't be written.
+    @discardableResult
+    func createCustomSong(_ request: CustomSongRequest) async -> Bool {
+        toast = request.artistID == nil ? "Finding the right artist for your song…" : "Heading into the studio…"
+        do {
+            let albumID = try await services.builder.createCustomSong(request)
+            toast = "Recording your song"
+            showAlbum(albumID)
+            player.play(albumID: albumID)
+            return true
+        } catch {
+            toast = error.localizedDescription
+            return false
+        }
+    }
+
+    func draftLyrics(style: String, about: String) async -> String? {
+        do { return try await services.songWriter.draft(style: style, about: about) } catch {
+            toast = error.localizedDescription
+            return nil
+        }
+    }
+
     // MARK: Favorites
 
     func toggleFavorite(track id: ID) {
