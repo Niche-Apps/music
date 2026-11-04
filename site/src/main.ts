@@ -21,6 +21,7 @@ const PLAY = '<svg viewBox="0 0 24 24"><path d="M7 4.8v14.4c0 .8.9 1.3 1.6.9l11.
 const PAUSE = '<svg viewBox="0 0 24 24"><rect x="6" y="4.5" width="4" height="15" rx="1.2"/><rect x="14" y="4.5" width="4" height="15" rx="1.2"/></svg>'
 
 async function boot() {
+  heroIntro()
   const lib = await loadLibrary()
   const cast = chooseCast(lib)
   const player = new Player(lib)
@@ -53,7 +54,7 @@ async function boot() {
   codeCard()
   finalWall(lib)
   dock(lib, player, win, cast)
-  heroIntro()
+  heroArrive()
   // After the first paint settles, decode the window's images ahead of the tour.
   if (innerWidth >= 700) setTimeout(() => win.warmUp(), 1200)
   // The Listen covers and the closing cover grid decode in idle time too, well before they scroll in.
@@ -105,16 +106,22 @@ function buildWall(lib: Library) {
   }
 }
 
+/** The hero copy starts hidden (html.intro, set before first paint) and animates in right away. */
 function heroIntro() {
   const tl = gsap.timeline({ defaults: { ease: 'expo.out' } })
-  tl.from('.hero-copy .eyebrow', { y: 20, opacity: 0, duration: 1.2 }, 0.1)
-    .from('.headline span', { y: 70, opacity: 0, rotateX: -40, transformOrigin: '50% 100%', duration: 1.6, stagger: 0.12 }, 0.15)
-    .from('.hero-copy .lede', { y: 24, opacity: 0, duration: 1.3 }, 0.45)
-    .from('.cta-row > *', { y: 20, opacity: 0, duration: 1.2, stagger: 0.08 }, 0.6)
-    .from('.hero-copy .fine', { opacity: 0, duration: 1.2 }, 0.8)
-    .from('.wall .lane', { opacity: 0, duration: 2.4, stagger: 0.12, ease: 'power2.out' }, 0)
+  tl.fromTo('.hero-copy .eyebrow', { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 1.2 }, 0.1)
+    .fromTo('.headline span', { y: 70, opacity: 0, rotateX: -40 }, { y: 0, opacity: 1, rotateX: 0, transformOrigin: '50% 100%', duration: 1.6, stagger: 0.12 }, 0.15)
+    .fromTo('.hero-copy .lede', { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 1.3 }, 0.45)
+    .fromTo('.cta-row > *', { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 1.2, stagger: 0.08 }, 0.6)
+    .fromTo('.hero-copy .fine', { opacity: 0 }, { opacity: 1, duration: 1.2 }, 0.8)
+  document.documentElement.classList.remove('intro')
+}
+
+/** The cover wall and (on wide screens) the window rise in once the library has loaded. */
+function heroArrive() {
+  gsap.from('.wall .lane', { opacity: 0, duration: 2.4, stagger: 0.12, ease: 'power2.out' })
   // Phones: the window waits behind the opaque hero, so it needs no entrance.
-  if (!document.body.classList.contains('flow')) tl.from('.window-wrap', { y: 260, opacity: 0, duration: 2, ease: 'expo.out', clearProps: 'transform,opacity' }, 0.5)
+  if (innerWidth >= 760) gsap.from('.window-wrap', { y: 260, opacity: 0, duration: 2, ease: 'expo.out', clearProps: 'transform,opacity', delay: 0.2 })
 }
 
 // ---------- Tour ----------
