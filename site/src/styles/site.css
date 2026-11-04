@@ -281,6 +281,12 @@ html:has(body.flow) { scroll-snap-type: y proximity; }
   .how-copy h3 { font-size: 28px; }
   .how-copy p { font-size: 15.5px; line-height: 1.5; margin-top: 12px; }
 }
-/* Phones: "How it works" is four snapping cards (the stage stays pinned while they pass). */
-.how.cards { height: calc(400svh); }
-.how.cards .how-snap { position: absolute; left: 0; width: 1px; height: 1px; scroll-snap-align: start; scroll-snap-stop: always; pointer-events: none; }
+/* Phones: "How it works" works like the tour: the particles stay pinned at the top and each
+   statement is a card that scrolls up beneath them and snaps into place. */
+.how.cards { height: auto; --band: calc(96px + 30svh); }
+.how.cards .how-stage { height: var(--band); z-index: 2; overflow: visible; background: var(--bg); }
+.how.cards .how-stage::after { content: ''; position: absolute; left: 0; right: 0; bottom: -28px; height: 28px; background: linear-gradient(var(--bg), rgba(8,9,13,0)); pointer-events: none; }
+.how.cards canvas.field { top: 84px; height: 30svh; }
+.how.cards .how-copy { position: relative; inset: auto; width: auto; padding: 0 22px 12svh; z-index: 1; }
+.how.cards .how-copy .phase { position: relative; top: auto; transform: none; opacity: .2; box-sizing: border-box; min-height: calc(100svh - var(--band));
+  padding-top: 22px; scroll-snap-align: start; scroll-snap-stop: always; scroll-margin-top: var(--band); }

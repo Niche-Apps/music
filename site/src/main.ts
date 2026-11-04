@@ -824,34 +824,38 @@ function how(lib: Library, cast: Cast) {
     // its shape and the copy crossfades, over time rather than with the finger.
     const section = $('.how')
     section.classList.add('cards')
-    section.insertAdjacentHTML('beforeend', phases.map((_, i) => `<i class="how-snap" style="top:${i * 100}svh"></i>`).join(''))
-    const snaps = [...section.querySelectorAll<HTMLElement>('.how-snap')]
+    // The statements leave the pinned stage and become cards that scroll beneath the particles.
+    $('.how-stage').after(host)
+    const band = () => $('.how-stage').offsetHeight
     const state = { p: 0 }
-    let target = 0
+    let target = -1
     const render = () => {
       field.progress = state.p
-      els.forEach((el, i) => {
-        const v = 1 - smooth(clamp(Math.abs(state.p - i) / 0.6))
-        el.style.opacity = v.toFixed(3)
-        el.style.transform = `translate3d(0, ${((i - state.p) * 26).toFixed(1)}px, 0)`
-        el.style.pointerEvents = v > 0.5 ? 'auto' : 'none'
-      })
       marks.forEach((m, i) => m.classList.toggle('on', Math.round(state.p) === i))
     }
     let tops: number[] = []
-    const measure = () => { tops = snaps.map((n) => n.getBoundingClientRect().top + scrollY) }
-    let raf = 0
-    addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(() => {
-      raf = 0
+    let top0 = 0
+    const measure = () => { top0 = band(); tops = els.map((n) => n.getBoundingClientRect().top + scrollY) }
+    const onScroll = () => {
+      if (!tops.length) return
       let best = 0
-      for (let i = 1; i < tops.length; i++) if (Math.abs(tops[i] - scrollY) < Math.abs(tops[best] - scrollY)) best = i
+      for (let i = 1; i < tops.length; i++) if (Math.abs(tops[i] - scrollY - top0) < Math.abs(tops[best] - scrollY - top0)) best = i
+      const room = Math.max(160, innerHeight - top0)
+      els.forEach((el, i) => {
+        const v = 1 - smooth(clamp(Math.abs(tops[i] - scrollY - top0) / (room * 0.75)))
+        const o = (0.2 + 0.8 * v).toFixed(2)
+        if (el.style.opacity !== o) el.style.opacity = o
+      })
       if (best === target) return
       target = best
       gsap.to(state, { p: target, duration: 1.8 * Math.max(1, Math.abs(target - state.p) * 0.6), ease: 'power2.inOut', overwrite: true, onUpdate: render })
-    }) }, { passive: true })
-    new ResizeObserver(measure).observe(document.body)
+    }
+    let raf = 0
+    addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; onScroll() }) }, { passive: true })
+    new ResizeObserver(() => { measure(); onScroll() }).observe(document.body)
     measure()
     render()
+    onScroll()
     return
   }
   const st = ScrollTrigger.create({
