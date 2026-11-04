@@ -610,6 +610,8 @@ def main():
     ap.add_argument("--out", default=DEFAULT_OUT)
     ap.add_argument("--cache", default=os.environ.get("DEEZER_CACHE", DEFAULT_CACHE))
     ap.add_argument("--min-fans", type=int, default=20000)
+    ap.add_argument("--cap-scale", type=float, default=1.0,
+                    help="multiply every per-genre cap (GENRE_CAPS) by this")
     ap.add_argument("--max-processed", type=int, default=11000,
                     help="artists whose albums+related get fetched during BFS")
     ap.add_argument("--pool-factor", type=float, default=1.6,
@@ -625,6 +627,8 @@ def main():
     ap.add_argument("--seed", type=int, default=1)
     args = ap.parse_args()
     random.seed(args.seed)
+    for g in GENRE_CAPS:
+        GENRE_CAPS[g] = int(round(GENRE_CAPS[g] * args.cap_scale))
 
     t0 = time.time()
     dz = Deezer(args.cache, args.workers, args.offline)

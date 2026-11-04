@@ -17,6 +17,19 @@ public struct CatalogArtist: Codable, Sendable, Hashable, Identifiable, Fetchabl
         case primaryGenre = "primary_genre", popularityRank = "popularity_rank"
     }
 
+    public init(id: Int64, name: String, fans: Int, pictureURL: URL?, pictureSmallURL: URL?, genres: [String],
+        primaryGenre: String, popularityRank: Int)
+    {
+        self.id = id
+        self.name = name
+        self.fans = fans
+        self.pictureURL = pictureURL
+        self.pictureSmallURL = pictureSmallURL
+        self.genres = genres
+        self.primaryGenre = primaryGenre
+        self.popularityRank = popularityRank
+    }
+
     public init(row: Row) throws {
         id = row["id"]
         name = row["name"]

@@ -200,8 +200,13 @@ final class OnboardingFlow {
     }
 
     func search(_ text: String) async -> [CatalogArtist] {
-        guard let catalog, !text.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
-        return await Task.detached(priority: .userInitiated) { (try? catalog.search(text, limit: 12)) ?? [] }.value
+        guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
+        let local = await Task.detached(priority: .userInitiated) { [catalog] in (try? catalog?.search(text, limit: 12)) ?? [] }.value
+        // The bundled catalog is capped per genre, so it misses many real bands. When it has little
+        // to offer, ask Deezer live (keyless) and add whoever it finds.
+        guard local.count < 6, text.trimmingCharacters(in: .whitespaces).count >= 3 else { return local }
+        let live = await LiveArtistSearch.search(text)
+        return LiveArtistSearch.merge(local, live)
     }
 
     // MARK: Questions
