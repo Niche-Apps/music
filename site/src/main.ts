@@ -394,8 +394,11 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
 
   // Layout: "wide" shows the whole window beside the copy; "compact" (narrow, tall or phone
   // screens) gives the window the top of the screen and tours it with a zooming camera.
+  let heroBottom = 0
+  let heroStale = false
   const layout = () => {
     const vw = innerWidth, vh = innerHeight
+    heroStale = heroCopy.classList.contains('off')
     if (flow) {
       const sceneH = Math.round(Math.min(vh * 0.48, vw * 1.0))
       tourEl.style.setProperty('--scene-h', `${sceneH}px`)
@@ -410,7 +413,10 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
     stage.style.setProperty('--copy-top', `${area.y + area.h + 18}px`)
     const heroScale = compact ? Math.min((vw * 0.96) / 1440, (vh * 0.9) / 900) : Math.min((vw * 0.8) / 1440, (vh * 0.95) / 900)
     // The window peeks up just under the hero's buttons, wherever they end on this screen.
-    const copyBottom = heroCopy.offsetTop + heroCopy.offsetHeight
+    // Measured while the hero copy is showing: once scrolled away it's content-visibility:hidden
+    // (zero height), and a resize then would put the window over the headline.
+    if (!heroCopy.classList.contains('off')) heroBottom = heroCopy.offsetTop + heroCopy.offsetHeight
+    const copyBottom = heroBottom
     const top = Math.min(copyBottom + 56, vh - 120)
     const heroY = top + (900 * heroScale) / 2 - vh / 2
     const minZoom = compact ? Math.min(0.55, area.w / 700) : 0
@@ -590,7 +596,11 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
     wall.style.opacity = String(0.5 * (1 - clamp(y / 0.7)))
     // Once faded out, the wall and hero copy leave the GPU entirely (no raster, no running animations).
     const heroGone = y > 0.72
-    if (wall.classList.contains('off') !== heroGone) { wall.classList.toggle('off', heroGone); heroCopy.classList.toggle('off', heroGone) }
+    if (wall.classList.contains('off') !== heroGone) {
+      wall.classList.toggle('off', heroGone); heroCopy.classList.toggle('off', heroGone)
+      // Coming back to the hero after a resize: measure it again now that it's laid out.
+      if (!heroGone && heroStale) { L = layout(); apply(y, true); return }
+    }
     if (L.compact) {
       const a = L.area, k = intro * (1 - out)
       viewport.style.clipPath = `inset(${lerp(0, a.y, k)}px ${lerp(0, L.vw - a.x - a.w, k)}px ${lerp(0, L.vh - a.y - a.h, k)}px ${lerp(0, a.x, k)}px round ${lerp(0, 18, k)}px)`
