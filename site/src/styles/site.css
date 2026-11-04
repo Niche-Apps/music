@@ -281,3 +281,6 @@ html:has(body.flow) { scroll-snap-type: y proximity; }
   .how-copy h3 { font-size: 28px; }
   .how-copy p { font-size: 15.5px; line-height: 1.5; margin-top: 12px; }
 }
+/* Phones: "How it works" is four snapping cards (the stage stays pinned while they pass). */
+.how.cards { height: calc(400svh); }
+.how.cards .how-snap { position: absolute; left: 0; width: 1px; height: 1px; scroll-snap-align: start; scroll-snap-stop: always; pointer-events: none; }

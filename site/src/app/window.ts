@@ -623,6 +623,22 @@ export class AppWindow {
     return { x: (r.left + r.width / 2 - w.left) / s, y: (r.top + r.height / 2 - w.top) / s }
   }
 
+  /** Bounding box (window points) of everything matching `selector`, or null if nothing is laid out. */
+  rect(selector: string): [number, number, number, number] | null {
+    const els = this.el.querySelectorAll(selector)
+    const w = this.el.getBoundingClientRect()
+    if (!els.length || !w.width) return null
+    const s = w.width / 1440
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+    els.forEach((el) => {
+      const r = el.getBoundingClientRect()
+      if (!r.width) return
+      x0 = Math.min(x0, r.left); y0 = Math.min(y0, r.top); x1 = Math.max(x1, r.right); y1 = Math.max(y1, r.bottom)
+    })
+    if (x0 === Infinity) return null
+    return [(x0 - w.left) / s, (y0 - w.top) / s, (x1 - x0) / s, (y1 - y0) / s]
+  }
+
   cursor(p: { x: number; y: number } | null, pressed = false) {
     const c = this.el.querySelector<HTMLElement>('.cursor')!
     if (!p) { c.style.opacity = '0'; return }

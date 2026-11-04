@@ -142,7 +142,11 @@ interface Step {
   update?: (t: number) => void
   focus: Focus[]
   cursor?: Aim[]
+  /** Phones: the shots the camera frames over the step (fitted to the scene, eased between). */
+  shots?: Shot[]
 }
+/** A phone camera shot: frame an element (`sel`, padded) or a fixed rect, from `t` on. */
+type Shot = { t: number; sel?: string; rect?: Rect; pad?: number }
 
 const FULL: Rect = [0, 0, 1440, 900]
 /** Scroll (in steps) that a screen change takes, starting right after its click. */
@@ -165,6 +169,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
       body: 'Pick the genres you love, name a few artists you already know, answer some this-or-that questions, and add any pet hates in your own words. That’s your taste profile.',
       chips: ['Genres', 'Artists you love', 'This or that', 'Pet hates'],
       page: 'taste', nav: 'home',
+      shots: [{ t: 0, sel: '.onboard .genres .tiles', pad: 30 }, { t: 0.4, sel: '.onboard .genres .tiles', pad: 30 }, { t: 0.52, sel: '.onboard .notes .field, .onboard .notes .chips', pad: 30 }, { t: 0.82, sel: '.onboard .notes .field, .onboard .notes .chips', pad: 30 }, { t: 0.88, sel: '.onboard .notes .ob-explicit, .onboard .go', pad: 40 }],
       update: (t) => win.setTaste(clamp((t - 0.08) / 0.36) * 3, smooth(clamp((t - 0.5) / 0.08)), notes.slice(0, Math.round(clamp((t - 0.6) / 0.24) * notes.length))),
       focus: [{ t: 0, rect: [100, 60, 1240, 560] }, { t: 0.45, rect: [700, 520, 740, 380] }, { t: 0.6, rect: [300, 60, 840, 560] }, { t: 0.9, rect: [700, 560, 740, 340] }],
       cursor: [
@@ -181,6 +186,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
       body: `From your answers it invents a starting roster of ${lib.artists.length} artists, each with a hometown, a career and a discography, and records their songs as you play them. Want more? It makes new artists whenever you ask. Every song is unique to you.`,
       chips: ['A starting roster', 'Fresh from the Studio', 'Because You Like…'],
       page: 'home', nav: 'home',
+      shots: [{ t: 0, rect: [240, 40, 900, 600] }, { t: 0.6, rect: [240, 40, 900, 600] }, { t: 0.78, rect: [0, 40, 760, 520] }],
       update: (t) => win.scrollFraction(clamp(t / 0.8), 'home'),
       focus: [{ t: 0, rect: [230, 52, 1210, 470] }, { t: 0.55, rect: [230, 260, 1210, 600] }, { t: 0.82, rect: [0, 40, 560, 420] }],
       cursor: [{ t: 0.02, sel: null }, { t: 0.84, sel: '.nav .item[data-key="artists"]' }, { t: 0.95, sel: '.nav .item[data-key="artists"]', click: true }],
@@ -190,6 +196,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
       body: 'Where they grew up, how they broke through, who left the band, the comeback. Each artist gets a backstory, a narrative arc and a vocal profile that never changes, so they sound like themselves on every record.',
       chips: ['Backstories', 'Career arcs', 'Fixed voices', 'Press photos'],
       page: 'artists', nav: 'artists', len: 1.8,
+      shots: [{ t: 0, rect: [0, 40, 860, 640] }, { t: 0.8, rect: [0, 40, 860, 640] }, { t: 0.86, sel: `${heroDetail} .card[data-album="${cast.album}"]`, pad: 260 }],
       update: (t) => { win.setArtistFocus(clamp(t / 0.82) * (nArtists - 1)); win.newRelease(0) },
       focus: [{ t: 0, rect: [230, 40, 520, 640] }, { t: 0.25, rect: [230, 52, 1210, 420] }, { t: 0.8, rect: [230, 52, 1210, 420] }, { t: 0.95, rect: [460, 380, 980, 520] }],
       cursor: [
@@ -207,6 +214,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
       body: 'The hungry debut, the difficult third record, the late-career reinvention. Discographies reflect the story, with track lists, liner notes, labels and covers that fit the year and the scene.',
       chips: ['Liner notes', 'Cover art', 'Release years'],
       page: 'album', nav: 'artists', arrive: 'push',
+      shots: [{ t: 0, sel: '.layer-album .album-head', pad: 24 }, { t: 0.2, sel: '.layer-album .album-head', pad: 24 }, { t: 0.4, rect: [240, 300, 1000, 560] }, { t: 0.72, rect: [240, 300, 1000, 560] }, { t: 0.82, sel: '.layer-album .album-head', pad: 24 }],
       update: (t) => { win.scrollFraction(clamp((t - 0.2) / 0.5), 'album'); win.shareSheet(0) },
       focus: [{ t: 0, rect: [230, 52, 1210, 340] }, { t: 0.5, rect: [230, 300, 1210, 600] }, { t: 0.82, rect: [240, 52, 900, 420] }],
       cursor: [{ t: 0.1, sel: null }, { t: 0.84, sel: '.layer-album .album-head .btn.red' }, { t: 0.95, sel: '.layer-album .album-head .btn.red', click: true }],
@@ -216,6 +224,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
       body: 'Your Mac writes the lyrics and records the song in the artist’s voice right there on Apple silicon, in about the time it takes to make a coffee. Nobody has heard it before you.',
       chips: ['Writing lyrics', 'Writing the score', 'Laying down the tracks', 'Mastering'],
       page: 'np', nav: 'artists', arrive: 'slide-up',
+      shots: [{ t: 0, rect: [80, 60, 1280, 780] }, { t: 0.25, sel: '.layer-np .studio-card', pad: 60 }],
       update: (t) => win.setStudio(clamp(t * 1.1)),
       focus: [{ t: 0, rect: [160, 90, 1180, 720] }, { t: 0.4, rect: [660, 200, 740, 440] }, { t: 1, rect: [660, 200, 740, 440] }],
       cursor: [{ t: 0.05, sel: null }],
@@ -225,6 +234,8 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
       body: 'Lyrics are written for that artist at that moment in their career: oblique, tender, furious, sometimes explicit if you allow it. Read along and the arc is in the words.',
       play: true,
       page: 'np', nav: 'artists',
+      shots: [{ t: 0, rect: [660, 120, 680, 640] }, { t: 0.8, rect: [660, 120, 680, 640] }, { t: 0.88, rect: [900, 0, 540, 420] }],
+
       update: (t) => { win.setStudio(null); if (!(player.playing && player.track?.id === studioTrack.track.id)) win.setLyricsProgress(clamp(t / 0.85)) },
       focus: [{ t: 0, rect: [640, 120, 760, 660] }, { t: 0.82, rect: [640, 120, 760, 660] }, { t: 0.97, rect: [1200, 0, 240, 160] }],
       cursor: [{ t: 0.8, sel: null }, { t: 0.86, sel: '.layer-np .corner button:last-child' }, { t: 0.95, sel: '.layer-np .corner button:last-child', click: true }],
@@ -234,6 +245,8 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
       body: `Hit New Release and ${hero.name} makes their next record, continuing their story. Give it a brief if you like (“a stripped-back winter record”) or let them surprise you.`,
       chips: ['New Release', 'More Like This', 'Optional brief'],
       page: 'artists', nav: 'artists',
+      shots: [{ t: 0, sel: `${heroDetail} .banner`, pad: 10 }, { t: 0.14, sel: `${heroDetail} .pill.nr`, pad: 330 }, { t: 0.78, sel: `${heroDetail} .pill.nr`, pad: 330 }, { t: 0.82, rect: [0, 40, 820, 560] }],
+
       update: (t) => {
         win.setArtistFocus(nArtists - 1)
         const open = clamp((t - 0.2) / 0.06) * (1 - clamp((t - 0.72) / 0.05))
@@ -252,6 +265,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
       body: 'Describe a sound, a city, an era — anything. Standard Music writes brand-new artists to match, each one arriving with a backstory, a discography and cover art. Make more whenever you like.',
       chips: ['Any idea', 'More Like This', 'Discover for me'],
       page: 'create', nav: 'create',
+      shots: [{ t: 0, sel: '.layer-create .describe, .layer-create .create-btn', pad: 40 }, { t: 0.76, sel: '.layer-create .describe, .layer-create .create-btn', pad: 40 }, { t: 0.84, rect: [0, 40, 820, 560] }],
       update: (t) => {
         win.typeCreate(createIdea.slice(0, Math.round(clamp((t - 0.12) / 0.4) * createIdea.length)), t > 0.66 && t < 0.72)
         win.toast(`${sparkle}Writing 4 new artists…`, clamp((t - 0.7) / 0.06) * (1 - clamp((t - 0.9) / 0.06)))
@@ -263,6 +277,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
       kicker: 'Browse', title: 'Wander your own record store.',
       body: 'Browse your library by genre, from Italian opera to arena rock, and find the band you didn’t know you were looking for. Every genre sounds the way it does on real records.',
       page: 'browse', nav: 'browse',
+      shots: [{ t: 0, rect: [240, 40, 920, 640] }, { t: 0.6, rect: [240, 40, 920, 640] }, { t: 0.8, rect: [0, 40, 820, 560] }],
       update: (t) => { win.toast(null); win.scrollFraction(clamp(t / 0.7), 'browse') },
       focus: [{ t: 0, rect: [230, 52, 1210, 480] }, { t: 0.7, rect: [230, 300, 1210, 600] }, { t: 0.9, rect: [0, 40, 560, 420] }],
       cursor: [{ t: 0.02, sel: null }, { t: 0.84, sel: '.nav .item[data-key="albums"]' }, { t: 0.95, sel: '.nav .item[data-key="albums"]', click: true }],
@@ -272,6 +287,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
       body: 'Send an album as one file over AirDrop or Messages. It carries the artist, their story, the covers and any recordings, and your friend’s Mac records the rest. No servers, no accounts.',
       chips: ['.standardalbum', 'AirDrop', 'No cloud'],
       page: 'album', nav: 'albums',
+      shots: [{ t: 0, sel: '.layer-album .album-head', pad: 24 }, { t: 0.2, sel: '.sheet', pad: 40 }, { t: 0.86, sel: '.sheet', pad: 40 }, { t: 0.92, sel: '.layer-album .album-head', pad: 24 }],
       update: (t) => { win.scrollFraction(0, 'album'); win.shareSheet(clamp((t - 0.2) / 0.08) * (1 - clamp((t - 0.88) / 0.06))) },
       focus: [{ t: 0, rect: [900, 40, 540, 360] }, { t: 0.3, rect: [450, 40, 540, 500] }],
       cursor: [{ t: 0.1, sel: '.layer-album .album-head .circle.filled' }, { t: 0.18, sel: '.layer-album .album-head .circle.filled', click: true }, { t: 0.6, sel: '.sheet .buttons .primary' }, { t: 0.7, sel: '.sheet .buttons .primary', click: true }, { t: 0.82, sel: null }],
@@ -283,6 +299,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
       page: 'album', nav: 'albums',
       update: () => win.shareSheet(0),
       focus: [{ t: 0, rect: FULL }],
+      shots: [{ t: 0, rect: FULL }],
       cursor: [{ t: 0, sel: null }],
     },
   ]
@@ -385,6 +402,14 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
 
   const camera = (r: Rect) => {
     const { area } = L
+    if (flow) {
+      // Fit the shot (contain), within sane zoom limits, and keep the view on the window.
+      const s = clamp(Math.min(area.w / r[2], area.h / r[3]), area.w / 1300, area.w / 460)
+      const vw = area.w / s, vh = area.h / s
+      const cx = vw >= 1440 ? 720 : clamp(r[0] + r[2] / 2, vw / 2, 1440 - vw / 2)
+      const cy = vh >= 900 ? 450 : clamp(r[1] + r[3] / 2, vh / 2, 900 - vh / 2)
+      return { x: area.x + area.w / 2 - L.stageW / 2 - (cx - 720) * s, y: area.y + area.h / 2 - L.stageH / 2 - (cy - 450) * s, s }
+    }
     const s = L.compact ? L.area.w / viewPts().w : Math.max(L.minZoom, Math.min(area.w / r[2], area.h / r[3], L.maxZoom))
     const vwPts = area.w / s, vhPts = area.h / s
     const cx = vwPts < r[2] ? r[0] + vwPts / 2 : r[0] + r[2] / 2
@@ -410,22 +435,20 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
     const y = clamp(p.y - v.h * 0.42, 0, Math.max(0, 900 - v.h))
     return [x, y, v.w, v.h]
   }
+  const shotRect = (sh: Shot): Rect => {
+    const r = sh.sel ? win.rect(sh.sel) : null
+    if (!r) return sh.rect ?? FULL
+    const p = sh.pad ?? 30
+    return [r[0] - p, r[1] - p, r[2] + 2 * p, r[3] + 2 * p]
+  }
   const focusAt = (i: number, t: number): Rect => {
     if (!L.compact) return FULL
     if (flow) {
-      // Phones: a calm camera. It frames the step's subject and only pans when the cursor would
-      // otherwise leave the view (a dead zone), so the scene moves on purpose, not with every twitch.
-      const [a, b, k] = at(steps[i].focus, t)
-      const r = lerpRect(a.rect, b.rect, ease(k))
-      const v = viewPts()
-      let x = r[0] + r[2] / 2 - v.w / 2, y = r[1] + r[3] / 2 - v.h / 2
-      const p = steps[i].cursor?.some((c) => c.sel) ? cursorPoint(i + t) : null
-      if (p) {
-        const mx = v.w * 0.16, my = v.h * 0.18
-        x = clamp(x, p.x - v.w + mx, p.x - mx)
-        y = clamp(y, p.y - v.h + my, p.y - my)
-      }
-      return [clamp(x, Math.min(0, 1440 - v.w), Math.max(0, 1440 - v.w)), clamp(y, Math.min(0, 900 - v.h), Math.max(0, 900 - v.h)), v.w, v.h]
+      // Phones: hand-staged shots of what matters in each step, eased between.
+      const sh = steps[i].shots ?? [{ t: 0, rect: FULL }]
+      const [a, b, k] = at(sh, t)
+      const ra = shotRect(a), rb = shotRect(b)
+      return lerpRect(ra, rb, ease(k))
     }
     if (steps[i].cursor?.some((c) => c.sel)) {
       // Follow the cursor while it's on screen in this step; otherwise use the step's own framing.
@@ -471,11 +494,12 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
   const camTick = (t: number) => {
     const dt = camLast ? Math.min(64, t - camLast) : 16
     camLast = t
-    const k = 1 - Math.exp(-dt / 140)
+    const k = 1 - Math.exp(-dt / (flow ? 260 : 140))
     camNow.x += (camTarget.x - camNow.x) * k
     camNow.y += (camTarget.y - camNow.y) * k
-    wrap.style.transform = `translate3d(${camNow.x.toFixed(1)}px, ${camNow.y.toFixed(1)}px, 0) scale(${camTarget.s.toFixed(4)})`
-    if (Math.abs(camTarget.x - camNow.x) + Math.abs(camTarget.y - camNow.y) > 0.3) camRaf = requestAnimationFrame(camTick)
+    camNow.s += (camTarget.s - camNow.s) * k
+    wrap.style.transform = `translate3d(${camNow.x.toFixed(1)}px, ${camNow.y.toFixed(1)}px, 0) scale(${camNow.s.toFixed(4)})`
+    if (Math.abs(camTarget.x - camNow.x) + Math.abs(camTarget.y - camNow.y) > 0.3 || Math.abs(camTarget.s - camNow.s) > 0.0005) camRaf = requestAnimationFrame(camTick)
     else { camRaf = 0; camLast = 0 }
   }
   const apply = (y: number, force = false, flowS?: number) => {
@@ -527,7 +551,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
     const ry = out * (L.compact ? 0 : 14)
     if (flow) {
       camTarget = { x: cam.x, y: cam.y + out * 30, s: cam.s }
-      if (!camNow.init) { camNow.x = cam.x; camNow.y = cam.y; camNow.init = true }
+      if (!camNow.init) { camNow.x = cam.x; camNow.y = cam.y; camNow.s = cam.s; camNow.init = true }
       if (NO.has('cam')) wrap.style.transform = `translate3d(${cam.x.toFixed(1)}px, ${cam.y.toFixed(1)}px, 0) scale(${cam.s.toFixed(4)})`
       else if (!camRaf) camRaf = requestAnimationFrame(camTick)
       // No fade on the window itself (fading a parent of many GPU layers is expensive in WebKit);
@@ -732,7 +756,10 @@ function listen(lib: Library, player: Player) {
     host.appendChild(clipCard(lib, t, player, 'reveal'))
   }
   if (NO.has('reveal')) { gsap.set('.clip.reveal', { opacity: 1, y: 0 }); return }
-  ScrollTrigger.batch('.clip.reveal', {
+  if (innerWidth < 760) {
+    // Phones: the whole list arrives together as it comes into view.
+    gsap.to('.clip.reveal', { opacity: 1, y: 0, duration: 0.9, ease: 'expo.out', stagger: 0.05, scrollTrigger: { trigger: '.clips', start: 'top 95%' } })
+  } else ScrollTrigger.batch('.clip.reveal', {
     start: 'top 92%',
     onEnter: (els) => gsap.to(els, { opacity: 1, y: 0, duration: 1, ease: 'expo.out', stagger: 0.06 }),
   })
@@ -785,6 +812,41 @@ function how(lib: Library, cast: Cast) {
   const els = [...host.querySelectorAll<HTMLElement>('.phase')]
   const phone = innerWidth < 760
   const marks = [...idx.querySelectorAll<HTMLElement>('span')]
+  if (phone) {
+    // Phones: one card per statement. Swiping snaps to the next one, then the particles morph to
+    // its shape and the copy crossfades, over time rather than with the finger.
+    const section = $('.how')
+    section.classList.add('cards')
+    section.insertAdjacentHTML('beforeend', phases.map((_, i) => `<i class="how-snap" style="top:${i * 100}svh"></i>`).join(''))
+    const snaps = [...section.querySelectorAll<HTMLElement>('.how-snap')]
+    const state = { p: 0 }
+    let target = 0
+    const render = () => {
+      field.progress = state.p
+      els.forEach((el, i) => {
+        const v = 1 - smooth(clamp(Math.abs(state.p - i) / 0.6))
+        el.style.opacity = v.toFixed(3)
+        el.style.transform = `translate3d(0, ${((i - state.p) * 26).toFixed(1)}px, 0)`
+        el.style.pointerEvents = v > 0.5 ? 'auto' : 'none'
+      })
+      marks.forEach((m, i) => m.classList.toggle('on', Math.round(state.p) === i))
+    }
+    let tops: number[] = []
+    const measure = () => { tops = snaps.map((n) => n.getBoundingClientRect().top + scrollY) }
+    let raf = 0
+    addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(() => {
+      raf = 0
+      let best = 0
+      for (let i = 1; i < tops.length; i++) if (Math.abs(tops[i] - scrollY) < Math.abs(tops[best] - scrollY)) best = i
+      if (best === target) return
+      target = best
+      gsap.to(state, { p: target, duration: 1.8 * Math.max(1, Math.abs(target - state.p) * 0.6), ease: 'power2.inOut', overwrite: true, onUpdate: render })
+    }) }, { passive: true })
+    new ResizeObserver(measure).observe(document.body)
+    measure()
+    render()
+    return
+  }
   const st = ScrollTrigger.create({
     trigger: '.how', start: 'top top', end: 'bottom bottom',
     onRefresh: (self) => update(self.progress),
