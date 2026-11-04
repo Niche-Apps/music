@@ -26,15 +26,21 @@ async function boot() {
   const player = new Player(lib)
 
   const flow = innerWidth < 760
-  const lenis = new Lenis({ lerp: 0.16, wheelMultiplier: 1, smoothWheel: !flow })
-  lenis.on('scroll', ScrollTrigger.update)
-  gsap.ticker.add((t) => lenis.raf(t * 1000))
-  gsap.ticker.lagSmoothing(0)
-  document.querySelectorAll<HTMLAnchorElement>('a[href^="#"]').forEach((a) =>
-    a.addEventListener('click', (e) => { e.preventDefault(); lenis.scrollTo(a.getAttribute('href')!, { duration: 1.6 }) }))
-
   const nav = $('.topnav')
-  lenis.on('scroll', ({ scroll }: { scroll: number }) => nav.classList.toggle('solid', scroll > 40))
+  gsap.ticker.lagSmoothing(0)
+  if (flow) {
+    // Phones scroll natively: no smooth-scroll library between the finger and the page.
+    addEventListener('scroll', () => nav.classList.toggle('solid', scrollY > 40), { passive: true })
+    document.querySelectorAll<HTMLAnchorElement>('a[href^="#"]').forEach((a) =>
+      a.addEventListener('click', (e) => { e.preventDefault(); document.querySelector(a.getAttribute('href')!)?.scrollIntoView({ behavior: 'smooth' }) }))
+  } else {
+    const lenis = new Lenis({ lerp: 0.16, wheelMultiplier: 1 })
+    lenis.on('scroll', ScrollTrigger.update)
+    gsap.ticker.add((t) => lenis.raf(t * 1000))
+    document.querySelectorAll<HTMLAnchorElement>('a[href^="#"]').forEach((a) =>
+      a.addEventListener('click', (e) => { e.preventDefault(); lenis.scrollTo(a.getAttribute('href')!, { duration: 1.6 }) }))
+    lenis.on('scroll', ({ scroll }: { scroll: number }) => nav.classList.toggle('solid', scroll > 40))
+  }
 
   buildWall(lib)
   const win = new AppWindow(lib, cast)
@@ -107,7 +113,8 @@ function heroIntro() {
     .from('.cta-row > *', { y: 20, opacity: 0, duration: 1.2, stagger: 0.08 }, 0.6)
     .from('.hero-copy .fine', { opacity: 0, duration: 1.2 }, 0.8)
     .from('.wall .lane', { opacity: 0, duration: 2.4, stagger: 0.12, ease: 'power2.out' }, 0)
-    .from('.window-wrap', { y: 260, opacity: 0, duration: 2, ease: 'expo.out', clearProps: 'transform,opacity' }, 0.5)
+  // Phones: the window waits behind the opaque hero, so it needs no entrance.
+  if (!document.body.classList.contains('flow')) tl.from('.window-wrap', { y: 260, opacity: 0, duration: 2, ease: 'expo.out', clearProps: 'transform,opacity' }, 0.5)
 }
 
 // ---------- Tour ----------
@@ -176,7 +183,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
       page: 'home', nav: 'home',
       update: (t) => win.scrollFraction(clamp(t / 0.8), 'home'),
       focus: [{ t: 0, rect: [230, 52, 1210, 470] }, { t: 0.55, rect: [230, 260, 1210, 600] }, { t: 0.82, rect: [0, 40, 560, 420] }],
-      cursor: [{ t: 0.1, sel: '.layer-home .hero-card .play' }, { t: 0.45, sel: '.layer-home .row-of .card:nth-child(2) .art' }, { t: 0.86, sel: '.nav .item[data-key="artists"]' }, { t: 0.95, sel: '.nav .item[data-key="artists"]', click: true }],
+      cursor: [{ t: 0.02, sel: null }, { t: 0.84, sel: '.nav .item[data-key="artists"]' }, { t: 0.95, sel: '.nav .item[data-key="artists"]', click: true }],
     },
     {
       kicker: 'Artists', title: 'Every artist has a story.',
@@ -202,7 +209,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
       page: 'album', nav: 'artists', arrive: 'push',
       update: (t) => { win.scrollFraction(clamp((t - 0.2) / 0.5), 'album'); win.shareSheet(0) },
       focus: [{ t: 0, rect: [230, 52, 1210, 340] }, { t: 0.5, rect: [230, 300, 1210, 600] }, { t: 0.82, rect: [240, 52, 900, 420] }],
-      cursor: [{ t: 0.12, sel: '.layer-album .album-head .notes' }, { t: 0.55, sel: '.layer-album .track:nth-child(4) .ttl' }, { t: 0.86, sel: '.layer-album .album-head .btn.red' }, { t: 0.95, sel: '.layer-album .album-head .btn.red', click: true }],
+      cursor: [{ t: 0.1, sel: null }, { t: 0.84, sel: '.layer-album .album-head .btn.red' }, { t: 0.95, sel: '.layer-album .album-head .btn.red', click: true }],
     },
     {
       kicker: 'In the studio', title: 'Press play. It’s recorded right then.',
@@ -258,7 +265,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
       page: 'browse', nav: 'browse',
       update: (t) => { win.toast(null); win.scrollFraction(clamp(t / 0.7), 'browse') },
       focus: [{ t: 0, rect: [230, 52, 1210, 480] }, { t: 0.7, rect: [230, 300, 1210, 600] }, { t: 0.9, rect: [0, 40, 560, 420] }],
-      cursor: [{ t: 0.15, sel: '.layer-browse .genre-tile:nth-child(2)' }, { t: 0.5, sel: '.layer-browse .genre-tile:nth-child(7)' }, { t: 0.86, sel: '.nav .item[data-key="albums"]' }, { t: 0.95, sel: '.nav .item[data-key="albums"]', click: true }],
+      cursor: [{ t: 0.02, sel: null }, { t: 0.84, sel: '.nav .item[data-key="albums"]' }, { t: 0.95, sel: '.nav .item[data-key="albums"]', click: true }],
     },
     {
       kicker: 'Share', title: 'Introduce a friend to your new favorite band.',
@@ -300,6 +307,13 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
       ${s.chips ? `<div class="chips">${s.chips.map((c) => `<span><i></i>${c}</span>`).join('')}</div>` : ''}
 `
     if (s.play) el.appendChild(clipCard(lib, studioTrack.track, player, 'in-copy'))
+    if (flow) {
+      // Phones: the copy sticks just under the scene while its step plays, then is pushed off.
+      const sc = document.createElement('div')
+      sc.className = 'sc'
+      sc.append(...el.childNodes)
+      el.appendChild(sc)
+    }
     copyHost.appendChild(el)
   })
   const copies = [...copyHost.querySelectorAll<HTMLElement>('.step-copy')]
@@ -337,7 +351,11 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
     hero.append(wall, $('.wall-fade'), heroCopy)
     tourEl.before(hero)
     tourEl.classList.add('flow')
+    document.body.classList.add('flow')
     stage.after(copyHost)
+    const fade = document.createElement('div')
+    fade.className = 'scene-fade'
+    stage.after(fade)
     copies.forEach((c, i) => c.style.setProperty('--len', String(steps[i].len ?? 1)))
     if (!NO.has('wall')) new IntersectionObserver(([e]) => wall.classList.toggle('off', !e.isIntersecting)).observe(hero)
     // Re-layout if the device rotates across the phone breakpoint.
@@ -349,7 +367,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
   const layout = () => {
     const vw = innerWidth, vh = innerHeight
     if (flow) {
-      const sceneH = Math.round(Math.min(vh * 0.46, vw * 0.95))
+      const sceneH = Math.round(Math.min(vh * 0.48, vw * 1.0))
       tourEl.style.setProperty('--scene-h', `${sceneH}px`)
       const area = { x: 10, y: 8, w: vw - 20, h: sceneH - 18 }
       return { vw, vh, compact: true, area, heroScale: 1, heroY: 0, minZoom: 0, maxZoom: 1, stageW: vw, stageH: sceneH, sceneH }
@@ -369,7 +387,8 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
     return { vw, vh, compact, area, heroScale, heroY, minZoom, maxZoom: compact ? (vw < 700 ? 1.05 : 1.2) : 1, stageW: vw, stageH: vh, sceneH: 0 }
   }
   let L = layout()
-  addEventListener('resize', () => { L = layout(); ScrollTrigger.refresh() })
+  // (Phones handle their own resizes below: iOS fires resize as its toolbars move mid-scroll.)
+  if (!flow) addEventListener('resize', () => { L = layout(); ScrollTrigger.refresh() })
 
   const camera = (r: Rect) => {
     const { area } = L
@@ -389,7 +408,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
   // Compact screens: the camera frames whatever the cursor is working on (like a screen recording
   // that zooms to the action); steps without a cursor use their own framing.
   function viewPts() {
-    const z = flow ? Math.min(L.area.w / 560, L.area.h / 380) : L.vw < 700 ? Math.max(L.minZoom, L.area.w / 620) : Math.min(1, L.area.w / 980, L.area.h / 640)
+    const z = flow ? Math.min(L.area.w / 820, L.area.h / 560) : L.vw < 700 ? Math.max(L.minZoom, L.area.w / 620) : Math.min(1, L.area.w / 980, L.area.h / 640)
     return { w: L.area.w / z, h: L.area.h / z }
   }
   const followRect = (p: { x: number; y: number }): Rect => {
@@ -400,6 +419,21 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
   }
   const focusAt = (i: number, t: number): Rect => {
     if (!L.compact) return FULL
+    if (flow) {
+      // Phones: a calm camera. It frames the step's subject and only pans when the cursor would
+      // otherwise leave the view (a dead zone), so the scene moves on purpose, not with every twitch.
+      const [a, b, k] = at(steps[i].focus, t)
+      const r = lerpRect(a.rect, b.rect, ease(k))
+      const v = viewPts()
+      let x = r[0] + r[2] / 2 - v.w / 2, y = r[1] + r[3] / 2 - v.h / 2
+      const p = steps[i].cursor?.some((c) => c.sel) ? cursorPoint(i + t) : null
+      if (p) {
+        const mx = v.w * 0.16, my = v.h * 0.18
+        x = clamp(x, p.x - v.w + mx, p.x - mx)
+        y = clamp(y, p.y - v.h + my, p.y - my)
+      }
+      return [clamp(x, Math.min(0, 1440 - v.w), Math.max(0, 1440 - v.w)), clamp(y, Math.min(0, 900 - v.h), Math.max(0, 900 - v.h)), v.w, v.h]
+    }
     if (steps[i].cursor?.some((c) => c.sel)) {
       // Follow the cursor while it's on screen in this step; otherwise use the step's own framing.
       const p = cursorPoint(i + t)
@@ -419,7 +453,9 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
     let a = path[0], b = path[0]
     for (let i = 0; i < path.length; i++) { if (path[i].s <= s) a = path[i]; if (path[i].s >= s) { b = path[i]; break } }
     if (path[path.length - 1].s < s) b = a
-    const k = b.s > a.s ? (s - a.s) / (b.s - a.s) : 0
+    // Rest at a target, then travel to the next one in a short, directed move just before it.
+    const move = Math.min(0.14, b.s - a.s)
+    const k = b.s > a.s ? clamp((s - (b.s - move)) / move) : 0
     const pa = a.sel ? win.point(a.sel) : null
     const pb = b.sel ? win.point(b.sel) : null
     return pa && pb ? { x: lerp(pa.x, pb.x, ease(k)), y: lerp(pa.y, pb.y, ease(k)) } : !a.sel ? null : pa
@@ -434,6 +470,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
   }
 
   let lastY = NaN
+  const flowGeo = { tops: [] as number[], travel: [] as number[], lead: 0 }
   // Flow mode: the camera eases toward its target instead of jumping with the scroll.
   const camNow = { x: 0, y: 0, s: 0, init: false }
   let camTarget = { x: 0, y: 0, s: 1 }
@@ -526,8 +563,15 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
     if (!NO.has('cursor')) updateCursor(s)
 
     if (flow) {
-      const active = Math.max(0, Math.min(steps.length - 1, Math.floor(s)))
-      if (!NO.has('copy')) copies.forEach((c, i) => c.classList.toggle('active', i === active))
+      // Each block brightens as it comes on stage and dims as it leaves, continuously.
+      // From cached geometry: where this block's text sits relative to its stuck position.
+      if (!NO.has('copy') && flowGeo.tops.length) copies.forEach((c, i) => {
+        const top = flowGeo.tops[i] - scrollY
+        const y = Math.max(flowGeo.lead, top) - Math.max(0, flowGeo.lead - (top + flowGeo.travel[i]))
+        const v = y >= flowGeo.lead ? 1 - smooth(clamp((y - flowGeo.lead) / 160)) : 1 - smooth(clamp((flowGeo.lead - y) / 70))
+        const o = (0.22 + 0.78 * v).toFixed(2)
+        if (c.style.opacity !== o) c.style.opacity = o
+      })
     } else copies.forEach((c, i) => {
       let d = s - i
       if (i === steps.length - 1) d = Math.min(d, 0.5)
@@ -567,43 +611,50 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
 
   if (flow) {
     // Cached block positions → step progress, from native scroll only (no layout reads per frame).
-    let tops: number[] = [], heights: number[] = []
-    let tourTop = 0, tourBottom = 0
+    let tops: number[] = [], travel: number[] = []
+    let lead = 0
     const measure = () => {
+      measureGeo()
+      Object.assign(flowGeo, { tops, travel, lead })
+    }
+    const measureGeo = () => {
+      // A step plays while its copy is stuck under the scene: from the moment it arrives there
+      // until the end of its block starts pushing it off.
+      lead = 56 + L.sceneH + 26
+      tourEl.style.setProperty('--copy-top', `${lead}px`)
       tops = copies.map((c) => c.getBoundingClientRect().top + scrollY)
-      heights = copies.map((c) => c.offsetHeight)
-      const r = tourEl.getBoundingClientRect()
-      tourTop = r.top + scrollY
-      tourBottom = r.bottom + scrollY
+      travel = copies.map((c) => Math.max(1, c.offsetHeight - (c.firstElementChild as HTMLElement).offsetHeight))
     }
-    // The scene is position:fixed (toggling sticky re-parents its whole GPU layer tree in WebKit,
-    // a ~110 ms stall). It follows the page in at the tour's start and out at its end by transform.
-    let sceneY = NaN
-    const placeScene = () => {
-      const natural = tourTop - scrollY
-      const y = Math.min(Math.max(56, natural), tourBottom - scrollY - L.sceneH)
-      if (Math.abs(y - sceneY) < 0.25) return
-      sceneY = y
-      stage.style.transform = `translate3d(0, ${(y - 56).toFixed(1)}px, 0)`
-      const off = y > innerHeight || y < -L.sceneH
-      if (stage.classList.contains('away') !== off) stage.classList.toggle('away', off)
-    }
+    // The scene is position:fixed at the top and never moved from script (anything scroll-linked
+    // in JS trails native scrolling on iOS). The opaque hero slides off it, and the sections after
+    // the tour slide over it; outside the tour it's hidden.
+    const fadeEl = $('.scene-fade', tourEl)
+    new IntersectionObserver(([e]) => {
+      const off = !e.isIntersecting
+      stage.classList.toggle('away', off)
+      fadeEl.classList.toggle('away', off)
+    }, { rootMargin: '0px 0px 0px 0px' }).observe(tourEl)
     const flowS = () => {
-      const line = scrollY + 56 + L.sceneH + 36 // just under the scene
+      const line = scrollY + lead
       if (line < tops[0]) return -Math.min(1, (tops[0] - line) / innerHeight)
-      for (let i = copies.length - 1; i >= 0; i--) if (line >= tops[i]) return i + clamp((line - tops[i]) / heights[i])
+      for (let i = copies.length - 1; i >= 0; i--) if (line >= tops[i]) return i + clamp((line - tops[i]) / travel[i])
       return 0
     }
     let raf = 0
     const onScroll = () => { if (!raf) raf = requestAnimationFrame(() => {
       raf = 0
-      placeScene()
       apply(scrollY / innerHeight, false, Math.max(0, flowS()))
     }) }
     addEventListener('scroll', onScroll, { passive: true })
-    addEventListener('resize', () => { L = layout(); measure(); sceneY = NaN; placeScene(); apply(scrollY / innerHeight, true, Math.max(0, flowS())) })
-    requestAnimationFrame(() => { measure(); placeScene(); apply(scrollY / innerHeight, true, Math.max(0, flowS())) })
-    addEventListener('load', () => { measure(); sceneY = NaN; placeScene() })
+    // iOS resizes the viewport as its toolbars show and hide; only re-layout for real width changes.
+    let lastW = innerWidth
+    addEventListener('resize', () => {
+      if (innerWidth !== lastW) { lastW = innerWidth; L = layout() }
+      measure(); apply(scrollY / innerHeight, true, Math.max(0, flowS()))
+    })
+    requestAnimationFrame(() => { measure(); apply(scrollY / innerHeight, true, Math.max(0, flowS())) })
+    // Fonts and images settle the copy's height after load.
+    new ResizeObserver(() => { measure(); apply(scrollY / innerHeight, true, Math.max(0, flowS())) }).observe(copyHost)
     return
   }
   const span = (total * 100 + 195 - 100) / 100
@@ -711,6 +762,7 @@ function how(lib: Library, cast: Cast) {
   const idx = $('.how-index')
   idx.innerHTML = phases.map((ph) => `<span><i></i>${ph.k}</span>`).join('')
   const els = [...host.querySelectorAll<HTMLElement>('.phase')]
+  const phone = innerWidth < 760
   const marks = [...idx.querySelectorAll<HTMLElement>('span')]
   const st = ScrollTrigger.create({
     trigger: '.how', start: 'top top', end: 'bottom bottom',
@@ -725,7 +777,8 @@ function how(lib: Library, cast: Cast) {
         const d = p - i
         const vis = Math.min(clamp(d / 0.18), clamp((1 - d) / 0.18) + (i === phases.length - 1 ? 1 : 0), i === 0 ? 1 : 2)
         el.style.opacity = String(i === 0 ? Math.min(1, clamp((1 - d) / 0.18)) : vis)
-        el.style.transform = `translateY(calc(-50% + ${(1 - (i === 0 ? clamp((1 - d) / 0.18) : vis)) * (d < 0.5 ? 30 : -30)}px))`
+        const off = (1 - (i === 0 ? clamp((1 - d) / 0.18) : vis)) * (d < 0.5 ? 30 : -30)
+        el.style.transform = phone ? `translate3d(0, ${off.toFixed(1)}px, 0)` : `translateY(calc(-50% + ${off}px))`
       })
       marks.forEach((m, i) => m.classList.toggle('on', Math.floor(p) === i))
     }

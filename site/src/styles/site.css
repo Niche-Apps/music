@@ -16,7 +16,7 @@
 html { background: var(--bg); }
 html.lenis, html.lenis body { height: auto; }
 .lenis.lenis-smooth { scroll-behavior: auto !important; }
-body { margin: 0; color: var(--ink); background: var(--bg); font-family: var(--text); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+body { margin: 0; color: var(--ink); background: var(--bg); font-family: var(--text); -webkit-font-smoothing: antialiased; overflow-x: clip; }
 a { color: inherit; text-decoration: none; }
 code { font-family: var(--mono); font-size: 0.92em; background: rgba(255,255,255,.07); padding: 1px 5px; border-radius: 5px; }
 .accent { background: linear-gradient(92deg, #ff5d7a 0%, #ff9a6b 45%, #ffc8d4 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
@@ -242,9 +242,15 @@ section.listen, section.open { padding: clamp(80px, 14vh, 160px) max(20px, 5vw);
 .flow-hero .cta-row { margin-top: 24px; }
 .tour.flow { height: auto; }
 .tour.flow { padding-top: var(--scene-h); }
-.tour.flow .stage { position: fixed; top: 56px; left: 0; right: 0; height: var(--scene-h); overflow: hidden; z-index: 5; background: var(--bg); will-change: transform; transform: translate3d(0, 100vh, 0); }
-.tour.flow .stage.away { visibility: hidden; }
-.tour.flow .stage::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 10px; background: linear-gradient(var(--bg) 0, transparent); transform: translateY(100%); }
+.tour.flow .stage { position: fixed; top: 56px; left: 0; right: 0; height: var(--scene-h); overflow: hidden; z-index: 5; background: var(--bg); }
+.tour.flow .stage.away, .tour.flow .scene-fade.away { visibility: hidden; }
+/* Copy fades out as it scrolls up toward the scene (a fixed gradient, no per-frame work). */
+.tour.flow .scene-fade { position: fixed; z-index: 5; left: 0; right: 0; top: calc(56px + var(--scene-h) - 1px); height: 30px; pointer-events: none;
+  background: linear-gradient(var(--bg) 0%, rgba(8,9,13,.85) 35%, rgba(8,9,13,0) 100%); }
+/* The hero and everything after the tour are opaque sheets above the fixed scene: scrolling slides
+   them off and over it natively, so nothing is positioned from JavaScript. */
+body.flow .flow-hero, body.flow main > section:not(.tour), body.flow .foot { position: relative; z-index: 6; background-color: var(--bg); }
+body.flow .flow-hero { box-shadow: 0 18px 36px rgba(0,0,0,.55); }
 .tour.flow .viewport { position: absolute; inset: 8px 10px 10px; border-radius: 18px; overflow: hidden; clip-path: none !important; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
 .tour.flow .window-wrap { left: calc(50% - 10px); top: calc(50% - 8px); }
 .tour.flow .tour-progress { left: 22px; bottom: 16px; opacity: 1 !important; z-index: 7; }
@@ -252,12 +258,26 @@ section.listen, section.open { padding: clamp(80px, 14vh, 160px) max(20px, 5vw);
 .tour.flow .stage .extras::before { content: ''; position: absolute; inset: 8px 10px 10px; border-radius: 18px; background: rgba(8,9,13,.82); opacity: var(--dim, 0); will-change: opacity; }
 .tour.flow .extras .menubar { top: 8px; left: 10px; right: 10px; border-radius: 18px 18px 0 0; }
 .tour.flow .steps { z-index: 1; position: relative; inset: auto; width: auto; height: auto; padding: 8px 22px 30vh; pointer-events: auto; overflow: visible; }
-.tour.flow .step-copy { position: relative; top: auto; left: auto; right: auto; transform: none !important; opacity: .38 !important;
-  min-height: calc(48vh * var(--len, 1)); padding: 22px 0 0; transition: opacity .35s ease; pointer-events: auto !important; }
-.tour.flow .step-copy.active { opacity: 1 !important; }
+.tour.flow .step-copy { position: relative; top: auto; left: auto; right: auto; transform: none !important; opacity: .25;
+  padding: 0; pointer-events: auto !important; }
+/* The room each step plays in (inside the content box, so the copy can stick through it). */
+.tour.flow .step-copy::after { content: ''; display: block; height: calc(46vh * var(--len, 1)); }
+.tour.flow .step-copy .sc { position: sticky; top: var(--copy-top, 50vh); }
 .tour.flow .step-copy h3 { font-size: 27px; line-height: 1.08; }
 .tour.flow .step-copy p { font-size: 16px; line-height: 1.55; margin-top: 12px; }
 .tour.flow .step-copy .eyebrow { margin-bottom: 10px; }
 .tour.flow .step-copy .chips { display: flex; margin-top: 14px; }
 .tour.flow .step-copy .chips span { font-size: 12px; padding: 5px 10px; }
 .tour.flow .step-copy .clip.in-copy { margin-top: 18px; }
+
+/* Phones: the particle field gets its own band above the copy instead of drawing under it.
+   Small-viewport units keep sizes fixed while iOS shows and hides its toolbars (no re-sampling). */
+@media (max-width: 759px) {
+  .how-stage { height: 100svh; }
+  .how-title { top: 76px; left: 22px; }
+  .how canvas.field { top: 100px; left: 0; width: 100%; height: 30svh; opacity: 1; }
+  .how-copy { left: 22px; right: 22px; width: auto; top: calc(112px + 30svh); bottom: auto; }
+  .how-copy .phase { top: 0; }
+  .how-copy h3 { font-size: 28px; }
+  .how-copy p { font-size: 15.5px; line-height: 1.5; margin-top: 12px; }
+}
