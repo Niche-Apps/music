@@ -365,7 +365,7 @@ public actor LibraryBuilder {
                     "tags": Schema.array(Schema.string("Scene/sound/era keyword"), min: 3, max: 6),
                     "origin": Schema.string("City, Country"),
                     "formedYear": Schema.integer(),
-                    "tagline": Schema.string("≤ 60 chars, like an Apple Music artist subtitle"),
+                    "tagline": Schema.string("≤ 60 chars, like a streaming service's artist subtitle"),
                     "albumCount": Schema.integer("1–10"),
                     "touchstones": Schema.array(Schema.string("Real artist they resemble"), min: 2, max: 3),
                 ]), min: chunk.count, max: chunk.count),
