@@ -29,11 +29,20 @@ jobs:
       TAG: ${{ github.ref_name }}
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Already released?
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$TAG is already published; nothing to do."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+
       - uses: actions/checkout@v4
+        if: env.SKIP != '1'
         with:
           fetch-depth: 0
 
       - name: Version from tag
+        if: env.SKIP != '1'
         run: |
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { echo "Not a stable version tag: $TAG"; exit 1; }
           VERSION="${TAG#v}"
@@ -44,6 +53,7 @@ jobs:
           echo "Standard Music $VERSION ($BUILD)"
 
       - name: Xcode
+        if: env.SKIP != '1'
         run: |
           XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
           sudo xcode-select -s "$XCODE"
@@ -52,6 +62,7 @@ jobs:
           brew install xcodegen
 
       - name: Signing keychain
+        if: env.SKIP != '1'
         env:
           P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
           P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
@@ -76,11 +87,13 @@ jobs:
           security find-identity -v -p codesigning "$KC"
 
       - name: Build, sign, notarize
+        if: env.SKIP != '1'
         env:
           SM_NOTARY_PROFILE: release-notary
         run: tools/release.sh
 
       - name: Appcast and release
+        if: env.SKIP != '1'
         env:
           SPARKLE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         run: |
