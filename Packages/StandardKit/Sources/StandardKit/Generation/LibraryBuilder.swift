@@ -652,7 +652,9 @@ public actor LibraryBuilder {
             - \(Voice.fieldGuidance)
             - members: for groups "Name — role"; for solo artists list collaborators or leave empty.
             - disbandedYear: null if still active.
-            - portraitConcept: art direction for a press photo or portrait that fits their era and scene (setting, styling, lighting, film/camera look). People must be fictional. No text.
+            - portraitConcept: art direction for their press photo, 60–110 words, built on the direction assigned below (keep its framing, look, setting, light and casting; make each concrete and specific to this artist, their era and their scene). Describe the people as individuals: age, build, hair, clothes with real color, expression. People must be fictional. No text.
+            Portrait direction:
+            \(PortraitDirection.assign(genres: [artist.primaryGenre] + artist.genres + artist.tags, isGroup: nil))
             - albums: exactly \(artist.plannedAlbumCount), chronological, years between \(artist.formedYear) and 2026 and plausible for the arc. kind: mostly "album"; use "ep", "single", "live" or "compilation" only where it makes the discography feel real. trackCount: album 8–12, ep 4–6, single 1–3, live 10–13, compilation 10–14.
               - soul (private): 90–160 words: the concept, the production approach and the sequence — map the tone, tempo and energy of the songs from opener to closer.
               - coverConcept: specific art direction for the cover, built on the visual approach assigned to that release below (keep its medium — don't turn a photo into a still life or a painting into a document). Say what is pictured, the palette, and the typography (or no text). True to the era and the genre's real sleeve conventions.
@@ -792,9 +794,9 @@ public actor LibraryBuilder {
     func paintPortrait(_ artist: Artist) async throws {
         setActivity(artist.id, "Photographing \(artist.name)")
         let prompt = """
-            Square artist portrait / press photo for a fictional \(artist.primaryGenre) \(artist.members.count > 1 ? "group" : "artist") called "\(artist.name)" from \(artist.origin), circa \(artist.formedYear + 2).
-            \(artist.imagePrompt ?? artist.tagline)
-            Photorealistic, editorial music photography, natural skin texture, authentic to the era's photo technology. Fictional people only. Absolutely no text, logos or watermarks.
+            Square artist photo for a fictional \(artist.primaryGenre) \(artist.members.count > 1 ? "group of \(artist.members.count)" : "solo artist") called "\(artist.name)" from \(artist.origin), circa \(artist.formedYear + 2).
+            Art direction: \(artist.imagePrompt ?? PortraitDirection.assign(genres: [artist.primaryGenre] + artist.genres, isGroup: artist.members.count > 1) + "\n" + artist.tagline)
+            Follow the art direction's framing, look, setting and light exactly; it must not look like a generic band press shot. Photorealistic (unless the art direction asks for a painting), natural skin texture, authentic to the era's camera technology. Fictional people only. Absolutely no text, logos or watermarks.
             """
         let data = try await imageLimit.run { try await self.client.image(prompt: prompt) }
         let path = try artwork.save(data, kind: .artist, id: artist.id)

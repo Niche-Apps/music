@@ -92,7 +92,9 @@ extension LibraryBuilder {
         } ?? """
             Performed by a brand-new fictional artist you invent to fit this song: a memorable, original name \
             (never a real artist's), a hometown, a short believable bio (60–110 words), a private soul (sonic identity, \
-            voice, influences; 60–120 words), members (empty for a solo act) and an imagePrompt for a press photo.
+            voice, influences; 60–120 words), members (empty for a solo act) and an imagePrompt: art direction for \
+            their press photo (60–110 words) built on this direction, keeping its framing, look, setting, light and casting:
+            \(PortraitDirection.assign(genres: [style], isGroup: nil))
             """
         let prompt = """
             The listener wrote their own song in the studio. Honor what they asked for exactly.

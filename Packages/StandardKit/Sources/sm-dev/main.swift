@@ -81,6 +81,12 @@ case "custom":
     print("TAGS: \(track.styleTags)")
     print("RECORDING TAGS: \(GenreSound.customRecordingTags(tags: track.styleTags))")
     print("LYRICS:\n\(track.lyrics ?? "")")
+case "portrait":
+    // sm-dev portrait <dir> <artistID>   (a fresh art direction and photo; prints the concept)
+    let builder = LibraryBuilder(db: db, client: client, catalog: catalog, artwork: ArtworkStore(root: dir.appending(path: "Artwork")))
+    try await builder.reimaginePortrait(artistID: args[3])
+    let a = try await db.reader.read { try Artist.fetchOne($0, key: args[3]) }!
+    print("\(a.name): \(a.imagePath ?? "")\n\(a.imagePrompt ?? "")")
 case "draft":
     print(try await SongWriter(client: client, db: db).draft(style: args[3], about: args.count > 4 ? args[4] : ""))
 case "write":

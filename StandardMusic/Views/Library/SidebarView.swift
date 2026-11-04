@@ -41,7 +41,10 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            StudioStatusPanel()
+            VStack(spacing: 0) {
+                UpdateAvailableButton()
+                StudioStatusPanel()
+            }
         }
     }
 
@@ -89,6 +92,56 @@ struct SidebarView: View {
     private func playPlaylist(_ playlist: Playlist, shuffled: Bool) {
         let entries = (try? model.services.db.reader.read { try LibraryQuery.playlistTracks($0, playlist.id) }) ?? []
         model.player.play(trackIDs: entries.map(\.info.id), context: .playlist(playlist.id, playlist.name), shuffled: shuffled)
+    }
+}
+
+/// "Update Available" at the bottom of the sidebar once Sparkle has found a new version. One click
+/// installs the downloaded update and relaunches.
+struct UpdateAvailableButton: View {
+    @State private var updater = AppUpdater.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        if let pending = updater.pending {
+            Button { updater.installUpdate() } label: {
+                HStack(spacing: 8) {
+                    if pending == .installing {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 15))
+                            .foregroundStyle(.white, Color.accentColor)
+                            .accessibilityHidden(true)
+                    }
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(pending == .installing ? "Installing Update…" : "Update Available")
+                            .font(.system(size: 11.5, weight: .semibold))
+                        if let detail = detail(pending) {
+                            Text(detail).font(.system(size: 10.5)).foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(pending == .installing)
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 12))
+            .padding(.horizontal, 10)
+            .padding(.bottom, 10)
+            .help("Install the new version and relaunch")
+            .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+
+    private func detail(_ pending: AppUpdater.Pending) -> String? {
+        switch pending {
+        case .ready(let v): "Version \(v) · Click to restart"
+        case .available(let v): "Version \(v)"
+        case .installing: nil
+        }
     }
 }
 

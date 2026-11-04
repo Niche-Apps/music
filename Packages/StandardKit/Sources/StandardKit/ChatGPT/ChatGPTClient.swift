@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import OSLog
 
 let gptLog = Logger(subsystem: "com.standardmusic", category: "chatgpt")
@@ -137,27 +138,74 @@ public actor ChatGPTClient {
         ).text
     }
 
-    /// Generates an image with the hosted image tool and returns JPEG data.
+    /// The image model behind ChatGPT's Images endpoint (what Codex uses).
+    public static let imageModel = "gpt-image-2"
+
+    /// Generates an image with ChatGPT's Images endpoint and returns JPEG data.
     public func image(prompt: String, size: String = "1024x1024", quality: String = "medium", retries: Int = 3)
         async throws -> Data
     {
-        let tool: JSON = ["type": "image_generation", "output_format": "jpeg", "size": .string(size),
-            "quality": .string(quality)]
+        let body: JSON = [
+            "prompt": .string(prompt), "model": .string(Self.imageModel), "quality": .string(quality),
+            "size": .string(size), "background": "opaque",
+        ]
+        let payload = try JSONEncoder().encode(body)
         var attempt = 0
+        var refreshed = false
         while true {
             do {
-                let result = try await respond(
-                    model: fastModel,
-                    instructions:
-                        "You are an art director. Always call the image generation tool exactly once with a refined version of the brief that keeps its medium, composition and palette. Never refuse stylistic briefs; keep everything fictional and avoid real people or trademarks.",
-                    prompt: prompt, format: nil, effort: "low", tools: [tool], toolChoice: "required")
-                guard let image = result.images.first else { throw ChatGPTError.failed("No image was returned.") }
-                return image
+                let creds = try await auth.validCredentials(forceRefresh: refreshed)
+                var request = URLRequest(url: Self.base.appending(path: "images/generations"))
+                request.httpMethod = "POST"
+                request.httpBody = payload
+                request.timeoutInterval = 300
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                authorize(&request, creds)
+                request.setValue(UUID().uuidString, forHTTPHeaderField: "x-codex-image-turn-id")
+                let (data, response) = try await session.data(for: request)
+                let http = response as? HTTPURLResponse
+                if let http { recordUsage(http) }
+                let status = http?.statusCode ?? 0
+                if status == 401, !refreshed {
+                    refreshed = true
+                    continue
+                }
+                if status == 429 {
+                    let retry = (http?.value(forHTTPHeaderField: "Retry-After")).flatMap(Double.init)
+                    let resets = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])
+                        .flatMap { ($0["error"] as? [String: Any])?["resets_in_seconds"] as? Double }
+                    throw ChatGPTError.rateLimited(
+                        retryAfter: retry ?? resets,
+                        message: "You've hit your ChatGPT usage limit for now. Generation will resume automatically.")
+                }
+                guard status == 200 else { throw ChatGPTError.http(status, String(decoding: data, as: UTF8.self)) }
+                guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                    let first = (json["data"] as? [[String: Any]])?.first,
+                    let b64 = first["b64_json"] as? String, let raw = Data(base64Encoded: b64)
+                else { throw ChatGPTError.failed("No image was returned.") }
+                return Self.jpeg(raw, square: size.split(separator: "x").count == 2 && Set(size.split(separator: "x")).count == 1) ?? raw
             } catch let error as ChatGPTError where error.isRetryable && attempt < retries {
                 attempt += 1
                 try await Task.sleep(for: .seconds(backoff(for: error, attempt: attempt)))
             }
         }
+    }
+
+    /// Re-encodes PNG (or anything ImageIO reads) as JPEG, center-cropped to a square if asked: the
+    /// endpoint sizes images from the prompt and may ignore `size`.
+    static func jpeg(_ data: Data, quality: Double = 0.9, square: Bool = false) -> Data? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+            var image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        else { return nil }
+        if square, image.width != image.height {
+            let side = min(image.width, image.height)
+            let rect = CGRect(x: (image.width - side) / 2, y: (image.height - side) / 2, width: side, height: side)
+            if let cropped = image.cropping(to: rect) { image = cropped }
+        }
+        let out = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(out, "public.jpeg" as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
+        return CGImageDestinationFinalize(dest) ? out as Data : nil
     }
 
     /// Models the subscription can use.

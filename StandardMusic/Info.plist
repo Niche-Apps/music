@@ -71,9 +71,9 @@
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUScheduledCheckInterval</key>
-	<integer>86400</integer>
+	<integer>14400</integer>
 	<key>SUAutomaticallyUpdate</key>
-	<false/>
+	<true/>
 	<key>SUAllowsAutomaticUpdates</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>

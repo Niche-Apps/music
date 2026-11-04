@@ -24,4 +24,9 @@ That writes `public/data/library.json` and `public/media/` (portraits, covers, 4
 ## Downloads
 
 Download buttons point at `releases/latest/download/StandardMusic.zip`, which
-`tools/publish-release.sh <version>` (repo root) keeps current.
+each tagged release (`tools/tag-release.sh <version>`, built by GitHub Actions) keeps current.
+
+## Deploying
+
+Cloudflare Workers Builds deploys the site on every push to `main` (root directory `site`, build
+command `npm run build`, deploy command `npx wrangler deploy`). `npm run deploy` still works by hand.

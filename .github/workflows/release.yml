@@ -1,0 +1,124 @@
+# Releasing = pushing a stable version tag (v1.4, v1.4.2). This builds the app, signs it with Developer ID,
+# notarizes and staples it, signs the zip for Sparkle, extends appcast.xml and publishes a GitHub release.
+# Installed copies see it within hours (Sparkle checks the feed) and show "Update Available" in the sidebar.
+#
+#   git tag -a v1.4 -m "Release notes in markdown"   (or tools/tag-release.sh 1.4)
+#   git push origin v1.4
+#
+# Tags with a suffix (v1.4-beta.1) are ignored. The version comes from the tag; the build number is the
+# commit count on main, so it only ever goes up. Secrets are uploaded once by tools/ci/upload-secrets.sh.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Version from tag
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { echo "Not a stable version tag: $TAG"; exit 1; }
+          VERSION="${TAG#v}"
+          BUILD=$(git rev-list --count "$TAG")
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "BUILD=$BUILD" >> "$GITHUB_ENV"
+          sed -i '' "s/MARKETING_VERSION: \"[^\"]*\"/MARKETING_VERSION: \"$VERSION\"/; s/CURRENT_PROJECT_VERSION: \"[^\"]*\"/CURRENT_PROJECT_VERSION: \"$BUILD\"/" project.yml
+          echo "Standard Music $VERSION ($BUILD)"
+
+      - name: Xcode
+        run: |
+          XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+          xcodebuild -downloadComponent MetalToolchain || true
+          brew install xcodegen
+
+      - name: Signing keychain
+        env:
+          P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.NOTARY_APP_PASSWORD }}
+        run: |
+          KC="$RUNNER_TEMP/release.keychain-db"
+          KC_PASS=$(openssl rand -hex 24)
+          security create-keychain -p "$KC_PASS" "$KC"
+          security set-keychain-settings -lut 7200 "$KC"
+          security unlock-keychain -p "$KC_PASS" "$KC"
+          echo "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/devid.p12"
+          security import "$RUNNER_TEMP/devid.p12" -k "$KC" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/devid.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KC_PASS" "$KC" >/dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s "$KC"
+          xcrun notarytool store-credentials release-notary --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" --keychain "$KC"
+          echo "SM_NOTARY_KEYCHAIN=$KC" >> "$GITHUB_ENV"
+          security find-identity -v -p codesigning "$KC"
+
+      - name: Build, sign, notarize
+        env:
+          SM_NOTARY_PROFILE: release-notary
+        run: tools/release.sh
+
+      - name: Appcast and release
+        env:
+          SPARKLE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          ZIP=build/release/StandardMusic.zip
+          INFO="build/release/Standard Music.app/Contents/Info"
+          [[ "$(defaults read "$PWD/$INFO" CFBundleShortVersionString)" == "$VERSION" ]]
+          [[ "$(defaults read "$PWD/$INFO" CFBundleVersion)" == "$BUILD" ]]
+          SIGN_UPDATE=$(find build/dev/SourcePackages/artifacts/sparkle -type f -perm -u+x -path "*/bin/sign_update" | head -1)
+          KEY="$RUNNER_TEMP/sparkle.key"
+          printf '%s' "$SPARKLE_KEY" > "$KEY"
+          SIGNED=$("$SIGN_UPDATE" --ed-key-file "$KEY" "$ZIP")
+          rm "$KEY"
+          mkdir -p "$RUNNER_TEMP/feed"
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern appcast.xml --dir "$RUNNER_TEMP/feed" || true
+          python3 -I tools/appcast.py "$RUNNER_TEMP/feed/appcast.xml" "$VERSION" "$BUILD" \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/StandardMusic.zip" \
+            "https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG" "$SIGNED"
+
+          # Notes: the tag's annotation if it has one, otherwise the commit subjects since the previous tag.
+          NOTES="$RUNNER_TEMP/notes.md"
+          BODY=$(git tag -l --format='%(contents)' "$TAG" | sed '/-----BEGIN PGP/,$d')
+          if [[ -n "${BODY// /}" && "$BODY" != "Standard Music $VERSION"* ]]; then
+            printf '%s\n' "$BODY" > "$NOTES"
+          else
+            LAST=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$TAG^" 2>/dev/null || true)
+            { echo "## What's new"; echo; git log --no-merges --format='- %s' ${LAST:+$LAST..}"$TAG"; } > "$NOTES"
+          fi
+          cat >> "$NOTES" <<EOF
+
+          ---
+          **Install:** unzip, move **Standard Music** to Applications and open it. Requires macOS 26 on Apple silicon,
+          about 5 GB of free space for the music model, and a ChatGPT account for writing. Signed with Developer ID
+          and notarized by Apple. Installed copies update themselves.
+          EOF
+          gh release create "$TAG" "$ZIP#Standard Music $VERSION for macOS (zip)" \
+            "$RUNNER_TEMP/feed/appcast.xml#Update feed (Sparkle appcast)" \
+            --title "Standard Music $VERSION" --notes-file "$NOTES" --latest --verify-tag
+
+      - name: Clean up keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/release.keychain-db" 2>/dev/null || true

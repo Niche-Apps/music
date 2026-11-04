@@ -50,15 +50,35 @@ records ahead while you listen.
 ```sh
 brew install xcodegen
 tools/build.sh Release        # generates the Xcode project and builds build/dev/…/Standard Music.app
-tools/release.sh              # Developer ID signed + notarized build/release/StandardMusic.zip
-tools/publish-release.sh 1.1  # bump, build, tag, push, GitHub release with zip + Sparkle appcast.xml
+tools/release.sh              # Developer ID signed + notarized build/release/StandardMusic.zip (local)
 ```
+
+## Releasing
+
+Push a stable version tag and GitHub Actions does the rest:
+
+```sh
+tools/tag-release.sh 1.4 notes.md   # or: git tag -a v1.4 -m "notes" && git push origin v1.4
+```
+
+`.github/workflows/release.yml` builds on a macOS runner, signs with Developer ID, notarizes and
+staples, signs the zip for Sparkle, extends `appcast.xml` and publishes the GitHub release. The version
+comes from the tag; the build number is the commit count. Tags with a suffix (`v1.4-beta.1`) are
+ignored. Installed copies download the update in the background and show **Update Available** in the
+sidebar; one click installs it and relaunches.
+
+The workflow's secrets (Developer ID identity, notarization password, Sparkle key) are uploaded once
+with `tools/ci/upload-secrets.sh`, run on the Mac that holds them.
+
+The website (`site/`) deploys itself: Cloudflare Workers Builds watches `main` and runs
+`npm run build` + `npx wrangler deploy` in `site/` on every push.
 
 Updates use [Sparkle 2](https://sparkle-project.org). The app reads
 `releases/latest/download/appcast.xml` (`SUFeedURL` in `StandardMusic/Info.plist`), so the GitHub repo
 must be public for update checks to work. Releases are signed with an EdDSA key whose private half lives
-only in the release Mac's login keychain (item "Private key for signing Sparkle updates", made by
-Sparkle's `generate_keys`); its public half is `SUPublicEDKey`. Back it up with `generate_keys -x <file>`
+in the release Mac's login keychain (item "Private key for signing Sparkle updates", made by
+Sparkle's `generate_keys`) and in the `SPARKLE_ED_PRIVATE_KEY` Actions secret; its public half is
+`SUPublicEDKey`. Back it up with `generate_keys -x <file>`
 and import it elsewhere with `generate_keys -f <file>`. If it is lost, installed copies can no longer
 verify updates and need a manual download.
 

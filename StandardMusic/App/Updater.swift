@@ -4,7 +4,7 @@ import Observation
 import Sparkle
 
 /// Auto-update via Sparkle 2. The feed (`SUFeedURL`) and EdDSA public key (`SUPublicEDKey`) live in
-/// Info.plist; tools/publish-release.sh signs each release and uploads `appcast.xml` next to the zip.
+/// Info.plist; the release workflow signs each release and uploads `appcast.xml` next to the zip.
 /// Sparkle stores the listener's choices (`SUEnableAutomaticChecks`, `SUAutomaticallyUpdate`) in the
 /// app's defaults; Info.plist only provides the defaults (check daily, ask before installing).
 @MainActor
@@ -13,6 +13,19 @@ final class AppUpdater {
     static let shared = AppUpdater()
 
     @ObservationIgnored private let controller: SPUStandardUpdaterController
+    @ObservationIgnored private let delegate = UpdateDelegate()
+
+    enum Pending: Equatable {
+        /// Found, not downloaded (automatic downloads are off): clicking opens Sparkle's window.
+        case available(String)
+        /// Downloaded and verified in the background: clicking installs and relaunches at once.
+        case ready(String)
+        case installing
+    }
+
+    /// Drives the sidebar's Update Available button.
+    private(set) var pending: Pending?
+    @ObservationIgnored private var installNow: (() -> Void)?
     @ObservationIgnored private var subscription: AnyCancellable?
     private var updater: SPUUpdater { controller.updater }
 
@@ -34,7 +47,16 @@ final class AppUpdater {
     }
 
     private init() {
-        controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+        controller = SPUStandardUpdaterController(
+            startingUpdater: true, updaterDelegate: delegate, userDriverDelegate: delegate)
+        delegate.found = { [weak self] version in
+            guard let self, self.installNow == nil else { return }
+            self.pending = .available(version)
+        }
+        delegate.downloaded = { [weak self] version, install in
+            self?.installNow = install
+            self?.pending = .ready(version)
+        }
         canCheckForUpdates = controller.updater.canCheckForUpdates
         subscription = controller.updater.publisher(for: \.canCheckForUpdates)
             .receive(on: DispatchQueue.main)
@@ -43,6 +65,17 @@ final class AppUpdater {
 
     func checkForUpdates() { controller.checkForUpdates(nil) }
 
+    /// The sidebar button: installs a downloaded update and relaunches, or shows Sparkle's window for one
+    /// that isn't downloaded yet.
+    func installUpdate() {
+        if let installNow {
+            pending = .installing
+            installNow()
+        } else {
+            checkForUpdates()
+        }
+    }
+
     /// "1.1 (3)"
     static var currentVersion: String {
         let info = Bundle.main.infoDictionary ?? [:]
@@ -50,4 +83,33 @@ final class AppUpdater {
         let build = info["CFBundleVersion"] as? String ?? "?"
         return "\(short) (\(build))"
     }
+}
+
+/// Sparkle's callbacks. Updates found by scheduled checks never pop a window: they download quietly
+/// (the default) and surface as the sidebar button, which installs them in one click.
+@MainActor
+private final class UpdateDelegate: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate {
+    var found: (String) -> Void = { _ in }
+    var downloaded: (String, @escaping () -> Void) -> Void = { _, _ in }
+
+    nonisolated func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        let version = item.displayVersionString
+        MainActor.assumeIsolated { found(version) }
+    }
+
+    nonisolated func updater(
+        _ updater: SPUUpdater, willInstallUpdateOnQuit item: SUAppcastItem,
+        immediateInstallationBlock immediateInstallHandler: @escaping () -> Void
+    ) -> Bool {
+        let version = item.displayVersionString
+        nonisolated(unsafe) let install = immediateInstallHandler
+        MainActor.assumeIsolated { downloaded(version, { install() }) }
+        return true
+    }
+
+    nonisolated var supportsGentleScheduledUpdateReminders: Bool { true }
+
+    nonisolated func standardUserDriverShouldHandleShowingScheduledUpdate(
+        _ update: SUAppcastItem, andInImmediateFocus immediateFocus: Bool
+    ) -> Bool { false }
 }

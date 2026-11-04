@@ -77,11 +77,11 @@ struct GeneralSettings: View {
             Section("Updates") {
                 Toggle(isOn: $updater.automaticallyChecksForUpdates) {
                     Text("Automatically check for updates")
-                    Text("Looks for a new version once a day.")
+                    Text("Looks for a new version every few hours.")
                 }
                 Toggle(isOn: $updater.automaticallyDownloadsUpdates) {
-                    Text("Automatically download and install")
-                    Text("New versions install the next time Standard Music quits.")
+                    Text("Automatically download updates")
+                    Text("New versions download quietly; click Update Available in the sidebar to install now, or they install when Standard Music quits.")
                 }
                 .disabled(!updater.automaticallyChecksForUpdates)
                 HStack {
