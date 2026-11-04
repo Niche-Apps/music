@@ -1,6 +1,6 @@
 // Serves the static site, plus /api/stars: the repo's GitHub star count, cached at the edge for
 // up to 2 minutes so the site stays live without hitting GitHub's rate limit.
-const REPO = 'justin-schroeder/StandardMusic'
+const REPO = 'standardagents/music'
 const TTL = 120
 
 export default {

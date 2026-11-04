@@ -7,7 +7,7 @@
 <p align="center">
   A native macOS music player where every artist, album, cover and song was made for you.<br>
   <a href="https://standard-music.formkit.workers.dev">Website</a> ·
-  <a href="https://github.com/justin-schroeder/StandardMusic/releases/latest">Download</a>
+  <a href="https://github.com/standardagents/music/releases/latest">Download</a>
 </p>
 
 <p align="center">

@@ -65,7 +65,7 @@
 		</dict>
 	</array>
 	<key>SUFeedURL</key>
-	<string>https://github.com/justin-schroeder/StandardMusic/releases/latest/download/appcast.xml</string>
+	<string>https://github.com/standardagents/music/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>a17SU2bkzltaT8nOfIWSAk/Mr2bWwboQlntPQqiQ9sU=</string>
 	<key>SUEnableAutomaticChecks</key>
