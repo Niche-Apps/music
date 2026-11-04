@@ -10,6 +10,21 @@
   <a href="https://github.com/justin-schroeder/StandardMusic/releases/latest">Download</a>
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/artists.jpg" alt="An invented artist's page: press photo, top songs and albums">
+</p>
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/home.jpg" alt="Home: recently recorded songs and new albums in your library"></td>
+    <td><img src="docs/screenshots/album.jpg" alt="An album with its cover, liner notes and track list"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/lyrics.jpg" alt="Now Playing with time-synced lyrics"></td>
+    <td><img src="docs/screenshots/browse.jpg" alt="Browse by genre, from arena rock to roots reggae"></td>
+  </tr>
+</table>
+
 - **Sign in with ChatGPT.** Your subscription writes the artists, biographies, discographies,
   liner notes and lyrics, and paints the cover art and press photos.
 - **Tell it what you like.** Onboarding uses real artists and real album art (a bundled catalog of

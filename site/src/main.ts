@@ -295,7 +295,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
     },
     {
       kicker: 'Browse', title: 'Wander your own record store.',
-      body: 'Browse your library by genre, from Italian opera to arena rock, and find the band you didn’t know you were looking for. Every genre sounds the way it does on real records.',
+      body: 'Browse your library by genre, from roots reggae to heavy metal, and find the band you didn’t know you were looking for. Every genre sounds the way it does on real records.',
       page: 'browse', nav: 'browse',
       shots: [{ t: 0, rect: [240, 40, 920, 640] }, { t: 0.6, rect: [240, 40, 920, 640] }, { t: 0.8, rect: [0, 40, 820, 560] }],
       update: (t) => { win.toast(null); win.scrollFraction(clamp(t / 0.7), 'browse') },

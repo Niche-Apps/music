@@ -782,11 +782,12 @@ export function chooseCast(lib: Library): Cast {
   const byName = (n: string) => lib.artists.find((a) => a.name === n)?.id
   // The album with the most recorded songs is the one the tour plays from (preferring a favorite).
   const ranked = [...lib.albums].sort((a, b) => b.tracks.filter((t) => t.ready).length - a.tracks.filter((t) => t.ready).length)
-  const album = ranked.find((a) => a.title === 'Good Hands, Bad Timing') ?? ranked[0]
-  const withLyrics = album.tracks.find((t) => t.title === 'Already Spent' && t.clip) ?? album.tracks.find((t) => t.lyrics && t.clip)
+  // The tour's song: an electropop single (its album is the one the tour opens and shares).
+  const album = ranked.find((a) => a.tracks.some((t) => t.title === 'Hot Pink Exit' && t.clip)) ?? ranked[0]
+  const withLyrics = album.tracks.find((t) => t.title === 'Hot Pink Exit' && t.clip) ?? album.tracks.find((t) => t.lyrics && t.clip)
     ?? lib.trackAlbum.get(lib.featured[0])!.tracks.find((t) => t.id === lib.featured[0])!
   const npAlbum = lib.trackAlbum.get(withLyrics.id)!
-  const artists = ['Ansel Bellweather', 'Alderwake', 'Amalia Zorzán', 'Faro de Cobre', 'Crown of Satellites', 'Switchyard Orchard']
+  const artists = ['Borae Signal', 'Della Quade', 'Kellan Brice', 'Nia Sorelle', 'Silver Causeway', 'Vexa Lune']
     .map(byName).filter((x): x is string => !!x)
     // In list order, so the selection (and the list's scroll) only ever moves down.
     .sort((a, b) => lib.artists.findIndex((x) => x.id === a) - lib.artists.findIndex((x) => x.id === b))
