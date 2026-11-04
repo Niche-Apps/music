@@ -22,6 +22,7 @@ const PAUSE = '<svg viewBox="0 0 24 24"><rect x="6" y="4.5" width="4" height="15
 
 async function boot() {
   heroIntro()
+  stars()
   const lib = await loadLibrary()
   const cast = chooseCast(lib)
   const player = new Player(lib)
@@ -71,6 +72,19 @@ async function boot() {
   })
 }
 
+/** Live GitHub star count (the Worker caches it for up to 2 minutes); shown from 100 stars. */
+function stars() {
+  const els = document.querySelectorAll<HTMLElement>('[data-stars]')
+  const fmt = (n: number) => (n >= 10000 ? `${(n / 1000).toFixed(0)}k` : n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : String(n))
+  const load = () => fetch('/api/stars').then((r) => r.json()).then(({ stars }: { stars: number | null }) => {
+    const show = typeof stars === 'number' && stars >= 100
+    els.forEach((el) => { el.textContent = show ? fmt(stars) : ''; el.hidden = !show })
+    document.querySelector<HTMLElement>('.stars-pill')!.hidden = !show
+  }).catch(() => {})
+  load()
+  setInterval(() => { if (!document.hidden) load() }, 120_000)
+}
+
 /** Decodes images a few at a time while the browser is idle. */
 function warmImages(list: Iterable<HTMLImageElement>) {
   const imgs = [...list]
@@ -109,8 +123,7 @@ function buildWall(lib: Library) {
 /** The hero copy starts hidden (html.intro, set before first paint) and animates in right away. */
 function heroIntro() {
   const tl = gsap.timeline({ defaults: { ease: 'expo.out' } })
-  tl.fromTo('.hero-copy .eyebrow', { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 1.2 }, 0.1)
-    .fromTo('.headline span', { y: 70, opacity: 0, rotateX: -40 }, { y: 0, opacity: 1, rotateX: 0, transformOrigin: '50% 100%', duration: 1.6, stagger: 0.12 }, 0.15)
+  tl.fromTo('.headline span', { y: 70, opacity: 0, rotateX: -40 }, { y: 0, opacity: 1, rotateX: 0, transformOrigin: '50% 100%', duration: 1.6, stagger: 0.12 }, 0.15)
     .fromTo('.hero-copy .lede', { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 1.3 }, 0.45)
     .fromTo('.cta-row > *', { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 1.2, stagger: 0.08 }, 0.6)
     .fromTo('.hero-copy .fine', { opacity: 0 }, { opacity: 1, duration: 1.2 }, 0.8)
@@ -190,7 +203,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
     },
     {
       kicker: 'Then it creates the artists', title: 'Meet bands you’ve never heard of.',
-      body: `From your answers it invents a starting roster of ${lib.artists.length} artists, each with a hometown, a career and a discography, and records their songs as you play them. Want more? It makes new artists whenever you ask. Every song is unique to you.`,
+      body: `From your answers it invents a starting roster of 110 artists, each with a hometown, a career and a discography, and records their songs as you play them. Want more? It makes new artists whenever you ask. Every song is unique to you.`,
       chips: ['A starting roster', 'Fresh from the Studio', 'Because You Like…'],
       page: 'home', nav: 'home',
       shots: [{ t: 0, rect: [240, 40, 900, 600] }, { t: 0.6, rect: [240, 40, 900, 600] }, { t: 0.78, rect: [0, 40, 760, 520] }],
@@ -805,7 +818,7 @@ function how(lib: Library, cast: Cast) {
   const peaks = cast.nowPlaying.track.peaks ?? Array.from({ length: 120 }, (_, i) => 0.3 + 0.7 * Math.abs(Math.sin(i * 0.3)))
   const field = new ParticleField($<HTMLCanvasElement>('canvas.field'), [tasteShape(genres), lyricShape(lyricLines), waveShape(peaks), recordShape])
   const phases = [
-    { k: '01 · Taste', t: 'It starts with what you love.', p: 'A two-minute quiz (genres, artists you know, this or that, your pet hates) becomes a taste profile. It decides who to invent: mostly what you love, some neighbors, a few wildcards.', spec: [['You give it', 'Genres, favorite artists, pet hates'], ['You get', `A starting roster of ${lib.artists.length} artists`]] },
+    { k: '01 · Taste', t: 'It starts with what you love.', p: 'A two-minute quiz (genres, artists you know, this or that, your pet hates) becomes a taste profile. It decides who to invent: mostly what you love, some neighbors, a few wildcards.', spec: [['You give it', 'Genres, favorite artists, pet hates'], ['You get', `A starting roster of 110 artists`]] },
     { k: '02 · The artists', t: 'Every artist gets a whole world.', p: 'A biography, a voice that never changes, a hidden soul that keeps them in character, a discography that follows their career, and covers made for each record. Lyrics are written just before a song records, in that artist’s own register.', spec: [['Each artist', 'A backstory, a voice, a career arc'], ['Each album', 'Track list, liner notes, cover art']] },
     { k: '03 · Recording', t: 'Then your Mac records the song.', p: 'Press play and your Mac performs it: vocals, band, mix and master, a finished track in a few minutes. Record-ahead keeps the next one ready, so the music doesn’t stop.', spec: [['Where', 'On your Mac, offline'], ['Sounds like', 'A finished, mastered record']] },
     { k: '04 · Your library', t: 'And then it’s yours.', p: 'Songs land in your library with favorites, plays, search and backups. Share any album as a single file, and your friend’s Mac records whatever you didn’t send.', spec: [['Kept', 'On your Mac, backed up'], ['Shared', 'One file, over AirDrop or Messages']] },

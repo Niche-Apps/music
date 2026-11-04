@@ -290,3 +290,13 @@ html:has(body.flow) { scroll-snap-type: y proximity; }
 .how.cards .how-copy { position: relative; inset: auto; width: auto; padding: 0 22px 12svh; z-index: 1; }
 .how.cards .how-copy .phase { position: relative; top: auto; transform: none; opacity: .2; box-sizing: border-box; min-height: calc(100svh - var(--band));
   padding-top: 22px; scroll-snap-align: start; scroll-snap-stop: always; scroll-margin-top: var(--band); }
+
+/* Live GitHub stars (hidden until 100) and the Star CTA. */
+.stars-pill { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 16px; font-size: 13.5px; font-weight: 650; color: var(--ink);
+  background: rgba(255,255,255,.07); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); text-decoration: none; font-variant-numeric: tabular-nums; }
+.stars-pill[hidden] { display: none; }
+.stars-pill svg { width: 14px; height: 14px; fill: #ffc94d; }
+.star-cta svg { width: 18px; height: 18px; fill: #ffc94d; }
+.star-cta b { margin-left: 4px; padding: 3px 8px; border-radius: 10px; background: rgba(255,255,255,.1); font-size: 13px; font-variant-numeric: tabular-nums; }
+.star-cta b[hidden] { display: none; }
+@media (max-width: 520px) { .stars-pill:not([hidden]) + .gh { display: none; } }
