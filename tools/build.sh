@@ -13,7 +13,7 @@ until mkdir "$LOCK" 2>/dev/null; do
 done
 trap 'rmdir "$LOCK" 2>/dev/null' EXIT
 cd "$ROOT"
-if [[ project.yml -nt StandardMusic.xcodeproj/project.pbxproj ]] || [[ -n $(find StandardMusic Engine -newer StandardMusic.xcodeproj/project.pbxproj -type f -name '*.swift' 2>/dev/null | head -1) ]]; then
+if [[ ! -f StandardMusic.xcodeproj/project.pbxproj ]] || [[ project.yml -nt StandardMusic.xcodeproj/project.pbxproj ]] || [[ -n $(find StandardMusic Engine -newer StandardMusic.xcodeproj/project.pbxproj -type f -name '*.swift' 2>/dev/null | head -1) ]]; then
   xcodegen generate --quiet
 fi
 LOG="$ROOT/build/last-build-$CONFIG.log"
