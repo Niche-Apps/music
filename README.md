@@ -67,8 +67,10 @@ comes from the tag; the build number is the commit count. Tags with a suffix (`v
 ignored. Installed copies download the update in the background and show **Update Available** in the
 sidebar; one click installs it and relaunches.
 
-The workflow's secrets (Developer ID identity, notarization password, Sparkle key) are uploaded once
-with `tools/ci/upload-secrets.sh`, run on the Mac that holds them.
+The workflow's secrets are uploaded once with `tools/ci/upload-secrets.sh` (works over SSH): the release
+Mac's build keychain (`~/.local/share/standard-code/build-keychain/notary.keychain-db`, which holds the
+Developer ID identity and notarytool's `standard-code-notary` profile) with its unlock password, and the
+Sparkle key.
 
 The website (`site/`) deploys itself: Cloudflare Workers Builds watches `main` and runs
 `npm run build` + `npx wrangler deploy` in `site/` on every push.
