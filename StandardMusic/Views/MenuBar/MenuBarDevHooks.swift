@@ -10,6 +10,7 @@ import SwiftUI
 ///   SM_DEV_MINI=1        switch to the MiniPlayer
 ///   SM_DEV_MENU=1        open the menu bar extra
 ///   SM_DEV_SETTINGS=tab  open Settings on a tab (general, playback, studio, account, library)
+///   SM_DEV_WINDOW=WxH    resize the main window (e.g. 1000x700), then step it narrower every 0.3 s
 ///   SM_DEV_SNAP=dir      a few seconds later, render every visible window to PNGs in dir
 struct MenuBarDevHooks: ViewModifier {
     @Environment(AppModel.self) private var model
@@ -31,6 +32,18 @@ struct MenuBarDevHooks: ViewModifier {
                     let start = env["SM_DEV_PLAY"] == "pending"
                         ? (try? model.services.db.tracks(forAlbum: info.album.id))?.first { !$0.isPlayable }?.id : nil
                     model.player.play(albumID: info.album.id, startingAt: start)
+                }
+            }
+            if let size = env["SM_DEV_WINDOW"]?.split(separator: "x").compactMap({ Double($0) }), size.count == 2,
+                let window = NSApp.windows.first(where: { $0.identifier?.rawValue.contains(WindowID.main) == true || $0.title == "Standard Music" })
+            {
+                var frame = window.frame
+                frame.size = CGSize(width: size[0], height: size[1])
+                window.setFrame(frame, display: true, animate: false)
+                for step in 0 ..< 20 {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    frame.size.width = size[0] - Double(step) * 20
+                    window.setFrame(frame, display: true, animate: false)
                 }
             }
             if env["SM_DEV_MINI"] != nil { AppActions.switchToMiniPlayer(openWindow: openWindow) }

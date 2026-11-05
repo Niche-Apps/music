@@ -8,6 +8,9 @@ struct MainView: View {
     @State private var library = LibraryState()
     @State private var columns = NavigationSplitViewVisibility.all
     @State private var lastSelection: SidebarItem = .home
+    @State private var windowWidth: CGFloat = 0
+    /// True while we hid the sidebar to make room for the side panel (so we know to bring it back).
+    @State private var sidebarYielded = false
     @FocusState private var searchFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -17,25 +20,26 @@ struct MainView: View {
             SidebarView()
                 .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 300)
         } detail: {
-            NavigationStack(path: $model.path) {
-                DetailRoot(selection: model.selection ?? .home)
-                    .toolbar { PlayerToolbar(model: model, library: library) }
-                    .navigationDestination(for: Route.self) { route in
-                        RouteView(route: route)
-                            .toolbar { PlayerToolbar(model: model, library: library) }
-                    }
+            HStack(spacing: 0) {
+                NavigationStack(path: $model.path) {
+                    DetailRoot(selection: model.selection ?? .home)
+                        .toolbar { PlayerToolbar(model: model, library: library) }
+                        .navigationDestination(for: Route.self) { route in
+                            RouteView(route: route)
+                                .toolbar { PlayerToolbar(model: model, library: library) }
+                        }
+                }
+                .overlay(alignment: .bottom) { toast }
+                if model.showsQueue || model.showsLyrics {
+                    sidePanel
+                        .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
+                }
             }
-            .overlay(alignment: .bottom) { toast }
+            .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: model.showsQueue || model.showsLyrics)
         }
         .searchable(text: $model.searchText, placement: .sidebar, prompt: "Search")
         .searchFocused($searchFocused)
         .toolbar(removing: .title)
-        .inspector(isPresented: inspectorBinding) {
-            Group {
-                if model.showsLyrics { LyricsView() } else { UpNextView() }
-            }
-            .inspectorColumnWidth(min: 260, ideal: 300, max: 400)
-        }
         .overlay {
             if model.showsNowPlaying {
                 NowPlayingView()
@@ -51,15 +55,11 @@ struct MainView: View {
             model.openShareFile(first)
             return true
         }
-        .onChange(of: model.showsQueue || model.showsLyrics) { _, shown in
-            // Make room for the inspector on narrow windows, like Music does.
-            guard let width = NSApp.keyWindow?.frame.width else { return }
-            if shown, width < 1250, columns != .detailOnly {
-                withAnimation(.smooth) { columns = .detailOnly }
-            } else if !shown, columns == .detailOnly {
-                withAnimation(.smooth) { columns = .all }
-            }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+            windowWidth = width
+            fitColumns(animated: false)
         }
+        .onChange(of: model.showsQueue || model.showsLyrics) { _, _ in fitColumns(animated: true) }
         .background { shortcuts }
         .onChange(of: model.selection) { old, new in
             model.path = []
@@ -85,15 +85,42 @@ struct MainView: View {
         #endif
     }
 
-    private var inspectorBinding: Binding<Bool> {
-        Binding(
-            get: { model.showsLyrics || model.showsQueue },
-            set: { shown in
-                if !shown {
-                    model.showsLyrics = false
-                    model.showsQueue = false
-                }
-            })
+    static let sidePanelWidth: CGFloat = 300
+    /// Sidebar, page and side panel need about this much width side by side.
+    static let roomForAllColumns: CGFloat = 1340
+
+    /// Hides the sidebar while the side panel is open in a window too narrow for all three, and brings it
+    /// back when there's room again (like Music).
+    private func fitColumns(animated: Bool) {
+        guard windowWidth > 0 else { return }
+        let inspector = model.showsQueue || model.showsLyrics
+        let crowded = inspector && windowWidth < Self.roomForAllColumns
+        var target = columns
+        if crowded, columns != .detailOnly {
+            target = .detailOnly
+            sidebarYielded = true
+        } else if !crowded, sidebarYielded {
+            target = .all
+            sidebarYielded = false
+        }
+        guard target != columns else { return }
+        if animated { withAnimation(.smooth) { columns = target } } else { columns = target }
+    }
+
+    /// Up Next or Lyrics, docked at the trailing edge of the page. Not SwiftUI's `.inspector`: as a
+    /// third split-view column it can loop AppKit's constraint pass until it aborts when the window is
+    /// resized on macOS 27 (issue #1). Inside the detail column the split view only ever has two.
+    private var sidePanel: some View {
+        HStack(spacing: 0) {
+            Divider().ignoresSafeArea()
+            Group {
+                if model.showsLyrics { LyricsView() } else { UpNextView() }
+            }
+            .contentMargins(.trailing, 12, for: .scrollContent)
+            .frame(width: Self.sidePanelWidth)
+            .frame(maxHeight: .infinity)
+        }
+        .background(.background)
     }
 
     @ViewBuilder private var toast: some View {
@@ -160,3 +187,4 @@ struct RouteView: View {
         }
     }
 }
+

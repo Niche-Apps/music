@@ -50,6 +50,7 @@ struct UpNextView: View {
                             .buttonStyle(.link)
                             .textCase(nil)
                             .accessibilityLabel("Clear Up Next")
+                            .padding(.trailing, 12)
                     }
                 }
             }
@@ -81,6 +82,7 @@ struct UpNextView: View {
                     .toggleStyle(.button)
                     .help(player.autoplay ? "Turn Autoplay off" : "Turn Autoplay on")
                     .accessibilityLabel("Autoplay")
+                    .padding(.trailing, 12)
                 }
             }
             if !player.history.isEmpty {
