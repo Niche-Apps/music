@@ -23,6 +23,7 @@ const PAUSE = '<svg viewBox="0 0 24 24"><rect x="6" y="4.5" width="4" height="15
 async function boot() {
   heroIntro()
   stars()
+  version()
   const lib = await loadLibrary()
   const cast = chooseCast(lib)
   const player = new Player(lib)
@@ -80,6 +81,19 @@ function stars() {
     const show = typeof stars === 'number' && stars >= 100
     els.forEach((el) => { el.textContent = show ? fmt(stars) : ''; el.hidden = !show })
     document.querySelector<HTMLElement>('.stars-pill')!.hidden = !show
+  }).catch(() => {})
+  load()
+  setInterval(() => { if (!document.hidden) load() }, 120_000)
+}
+
+/** The latest release's version, small inside each download button. Live (the Worker caches it for up to 2
+ *  minutes), so a new release shows here as soon as it's published. */
+function version() {
+  const els = document.querySelectorAll<HTMLElement>('[data-version]')
+  const load = () => fetch('/api/release').then((r) => r.json()).then(({ version }: { version: string | null }) => {
+    if (!version) return
+    els.forEach((el) => { el.textContent = `v${version}`; el.hidden = false })
+    document.querySelectorAll<HTMLElement>('[data-download]').forEach((a) => { a.setAttribute('aria-label', `${a.textContent!.replace(/v[\d.]+$/, '').trim()}, version ${version}`) })
   }).catch(() => {})
   load()
   setInterval(() => { if (!document.hidden) load() }, 120_000)
