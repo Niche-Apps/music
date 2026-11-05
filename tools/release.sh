@@ -32,7 +32,9 @@ codesign --verify --strict --deep --verbose=2 "$APP"
   || { echo "Info.plist has no SUPublicEDKey; updates couldn't be verified." >&2; exit 1; }
 
 ditto -c -k --keepParent "$APP" "$OUT/notarize.zip"
-xcrun notarytool submit "$OUT/notarize.zip" --keychain-profile "$PROFILE" ${SM_NOTARY_KEYCHAIN:+--keychain "$SM_NOTARY_KEYCHAIN"} --wait
+NOTARY_KC=()
+[[ -n "${SM_NOTARY_KEYCHAIN:-}" ]] && NOTARY_KC=(--keychain "$SM_NOTARY_KEYCHAIN")
+xcrun notarytool submit "$OUT/notarize.zip" --keychain-profile "$PROFILE" "${NOTARY_KC[@]}" --wait
 xcrun stapler staple "$APP"
 spctl --assess --type execute --verbose=2 "$APP"
 rm "$OUT/notarize.zip"
