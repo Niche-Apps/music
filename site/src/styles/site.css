@@ -51,6 +51,9 @@ code { font-family: var(--mono); font-size: 0.92em; background: rgba(255,255,255
 .btn-ghost .ghi { width: 18px; height: 18px; color: var(--ink); }
 .eyebrow { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 600; letter-spacing: .02em; color: var(--ink-2); }
 .eyebrow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--pink); box-shadow: 0 0 12px var(--pink); }
+/* No orphans: prose wraps for even lines, headings balance. */
+p, li, figcaption { text-wrap: pretty; }
+h1, h2, h3, h4, .lede { text-wrap: balance; }
 .lede { font-size: clamp(16px, 1.35vw, 19px); line-height: 1.55; color: var(--ink-2); max-width: 36em; }
 .fine { font-size: 13px; color: var(--ink-3); margin: 14px 0 0; }
 
@@ -199,7 +202,9 @@ section.listen, section.open { padding: clamp(80px, 14vh, 160px) max(20px, 5vw);
 .reveal { opacity: 0; transform: translateY(30px); }
 
 /* ---------- Compact tour (narrow, tall and phone screens) ---------- */
-.viewport { position: absolute; inset: 0; z-index: 4; }
+/* The viewport spans the stage above the hero copy; only the window itself takes clicks, so the hero buttons stay live. */
+.viewport { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+.window-scale { pointer-events: auto; }
 .stage.compact .steps { top: var(--copy-top, 56vh); bottom: 44px; left: 5vw; right: 5vw; width: auto; overflow: hidden; }
 .stage.compact .step-copy { top: 0; transform: none; max-width: 640px; }
 .stage.compact .step-copy h3 { font-size: clamp(24px, 4.4vw, 38px); }
