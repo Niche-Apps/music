@@ -73,8 +73,15 @@ public actor ChatGPTClient {
     public var fastModel = ChatGPTClient.defaultFastModel
     private var usageObservers: [UUID: @Sendable (ChatGPTUsage) -> Void] = [:]
 
-    public init(auth: ChatGPTAuth) {
+    // OpenRouter mode (see OpenRouter/OpenRouterClient.swift).
+    public private(set) var provider: AIProvider = .chatGPT
+    private var openRouter: OpenRouterClient?
+    private var openRouterImageModel: String?
+    private let openRouterTransport: OpenRouterClient.Transport?
+
+    public init(auth: ChatGPTAuth, openRouterTransport: OpenRouterClient.Transport? = nil) {
         self.auth = auth
+        self.openRouterTransport = openRouterTransport
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 180
         config.timeoutIntervalForResource = 600
@@ -84,6 +91,42 @@ public actor ChatGPTClient {
     public func setModels(writing: String, fast: String) {
         writingModel = writing
         fastModel = fast
+    }
+
+    /// Switches generation to OpenRouter with any model slugs. `imageModel == nil` means procedural
+    /// artwork only ($0 image spend). An empty key leaves the client not ready.
+    public func configureOpenRouter(apiKey: String, writing: String, fast: String, imageModel: String?) {
+        provider = .openRouter
+        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        openRouter = key.isEmpty ? nil : OpenRouterClient(apiKey: key, transport: openRouterTransport)
+        writingModel = OpenRouterCatalog.normalizedModelID(writing) ?? OpenRouterCatalog.defaultModel
+        fastModel = OpenRouterCatalog.normalizedModelID(fast) ?? writingModel
+        openRouterImageModel = imageModel.flatMap(OpenRouterCatalog.normalizedModelID)
+    }
+
+    public func useChatGPT() {
+        provider = .chatGPT
+        openRouter = nil
+    }
+
+    /// Lets the OpenRouter client skip `json_schema` for models the catalog says can't do it.
+    public func noteOpenRouterCatalog(_ models: [OpenRouterModel]) async {
+        await openRouter?.noteCatalog(models)
+    }
+
+    /// Whether generation can run: OpenRouter with a key, or a ChatGPT sign-in.
+    public var isReady: Bool {
+        get async {
+            switch provider {
+            case .openRouter: openRouter != nil
+            case .chatGPT: await auth.credentials != nil
+            }
+        }
+    }
+
+    private func requireOpenRouter() throws -> OpenRouterClient {
+        guard let openRouter else { throw ChatGPTError.failed("Add your OpenRouter API key in Settings › Account.") }
+        return openRouter
     }
 
     public func observeUsage(_ handler: @escaping @Sendable (ChatGPTUsage) -> Void) {
@@ -112,10 +155,18 @@ public actor ChatGPTClient {
         var attempt = 0
         while true {
             do {
-                let result = try await respond(
-                    model: quality == .writing ? writingModel : fastModel, instructions: instructions, prompt: prompt,
-                    format: format, effort: effort, tools: [])
-                guard let data = result.text.data(using: .utf8) else { throw ChatGPTError.malformed("empty") }
+                let model = quality == .writing ? writingModel : fastModel
+                let data: Data
+                if provider == .openRouter {
+                    data = try await requireOpenRouter().json(
+                        schemaName: schemaName, schema: schema, instructions: instructions, prompt: prompt, model: model)
+                } else {
+                    let result = try await respond(
+                        model: model, instructions: instructions, prompt: prompt,
+                        format: format, effort: effort, tools: [])
+                    guard let d = result.text.data(using: .utf8) else { throw ChatGPTError.malformed("empty") }
+                    data = d
+                }
                 do {
                     return try JSONDecoder().decode(T.self, from: data)
                 } catch {
@@ -132,7 +183,11 @@ public actor ChatGPTClient {
     public func text(instructions: String, prompt: String, quality: Quality = .writing, effort: String = "low")
         async throws -> String
     {
-        try await respond(
+        if provider == .openRouter {
+            return try await requireOpenRouter().text(
+                instructions: instructions, prompt: prompt, model: quality == .writing ? writingModel : fastModel)
+        }
+        return try await respond(
             model: quality == .writing ? writingModel : fastModel, instructions: instructions, prompt: prompt,
             format: nil, effort: effort, tools: []
         ).text
@@ -145,6 +200,26 @@ public actor ChatGPTClient {
     public func image(prompt: String, size: String = "1024x1024", quality: String = "medium", retries: Int = 3)
         async throws -> Data
     {
+        if provider == .openRouter {
+            let square = size.split(separator: "x").count == 2 && Set(size.split(separator: "x")).count == 1
+            if let model = openRouterImageModel, let client = openRouter {
+                var attempt = 0
+                while true {
+                    do {
+                        let raw = try await client.image(prompt: prompt, model: model)
+                        return Self.jpeg(raw, square: square) ?? raw
+                    } catch let error as ChatGPTError where error.isRetryable && attempt < retries {
+                        attempt += 1
+                        try await Task.sleep(for: .seconds(min(backoff(for: error, attempt: attempt), 30)))
+                    } catch {
+                        gptLog.error("OpenRouter image failed, using procedural artwork: \(error.localizedDescription, privacy: .public)")
+                        break
+                    }
+                }
+            }
+            guard let art = ProceduralArtwork.jpeg(prompt: prompt, size: size) else { throw ChatGPTError.failed("Couldn't draw artwork.") }
+            return art
+        }
         let body: JSON = [
             "prompt": .string(prompt), "model": .string(Self.imageModel), "quality": .string(quality),
             "size": .string(size), "background": "opaque",

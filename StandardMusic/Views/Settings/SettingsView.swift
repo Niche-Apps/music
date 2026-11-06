@@ -74,6 +74,13 @@ struct GeneralSettings: View {
                     }
                 }
             }
+            if AppUpdater.updatesDisabled {
+                Section("Updates") {
+                    LabeledContent("Version \(AppUpdater.currentVersion)", value: "OpenRouter build")
+                    Text("Automatic updates are off so the upstream ChatGPT-only release can’t replace this build. Rebuild from source to update.")
+                        .settingsFooter()
+                }
+            } else {
             Section("Updates") {
                 Toggle(isOn: $updater.automaticallyChecksForUpdates) {
                     Text("Automatically check for updates")
@@ -91,6 +98,7 @@ struct GeneralSettings: View {
                     Button("Check Now") { updater.checkForUpdates() }
                         .disabled(!updater.canCheckForUpdates)
                 }
+            }
             }
         }
     }

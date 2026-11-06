@@ -15,6 +15,7 @@ enum Paths {
     static let library = support.appending(path: "Library", directoryHint: .isDirectory)
     static let database = library.appending(path: "Library.sqlite")
     static let artwork = library.appending(path: "Artwork", directoryHint: .isDirectory)
+    static let openRouterCatalog = support.appending(path: "openrouter-models.json")
     static let audio = library.appending(path: "Audio", directoryHint: .isDirectory)
     /// Models are shared across data directories; they're large and immutable.
     static let models = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

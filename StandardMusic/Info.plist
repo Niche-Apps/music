@@ -69,12 +69,14 @@
 	<key>SUPublicEDKey</key>
 	<string>a17SU2bkzltaT8nOfIWSAk/Mr2bWwboQlntPQqiQ9sU=</string>
 	<key>SUEnableAutomaticChecks</key>
-	<true/>
+	<false/>
 	<key>SUScheduledCheckInterval</key>
 	<integer>14400</integer>
 	<key>SUAutomaticallyUpdate</key>
-	<true/>
+	<false/>
 	<key>SUAllowsAutomaticUpdates</key>
+	<false/>
+	<key>SMDisableSparkle</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>

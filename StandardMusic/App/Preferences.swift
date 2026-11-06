@@ -12,6 +12,12 @@ enum Pref {
     static let notifyWhenReady = "notifyWhenReady"
     static let writingModel = "writingModel"
     static let fastModel = "fastModel"
+    /// "chatGPT" or "openRouter" (AIProvider raw value).
+    static let aiProvider = "aiProvider"
+    static let openRouterWritingModel = "openRouterWritingModel"
+    static let openRouterFastModel = "openRouterFastModel"
+    /// Empty = procedural artwork ($0); otherwise an OpenRouter image-capable model slug.
+    static let openRouterImageModel = "openRouterImageModel"
     static let engineIdleMinutes = "engineIdleMinutes"
     static let modelVariant = "modelVariant"
     static let miniPlayerFloats = "miniPlayerFloats"
@@ -42,6 +48,10 @@ enum Pref {
             notifyWhenReady: true,
             writingModel: ChatGPTClient.defaultWritingModel,
             fastModel: ChatGPTClient.defaultFastModel,
+            aiProvider: AIProvider.chatGPT.rawValue,
+            openRouterWritingModel: OpenRouterCatalog.defaultModel,
+            openRouterFastModel: OpenRouterCatalog.defaultModel,
+            openRouterImageModel: "",
             engineIdleMinutes: 5,
             modelVariant: ModelVariant.recommended.rawValue,
             miniPlayerFloats: true,

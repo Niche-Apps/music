@@ -6,6 +6,7 @@ struct WelcomeView: View {
     @Environment(AppModel.self) private var model
     @State private var covers: [URL] = []
     @State private var appeared = false
+    @State private var showsOpenRouter = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -103,6 +104,18 @@ struct WelcomeView: View {
                     .buttonStyle(.onboardingPrimary)
                     .keyboardShortcut(.defaultAction)
 
+                    Button {
+                        showsOpenRouter = true
+                    } label: {
+                        Label("Use OpenRouter (any model)", systemImage: "point.3.connected.trianglepath.dotted")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                    }
+                    .buttonStyle(.glass)
+                    .sheet(isPresented: $showsOpenRouter) { OpenRouterSetupSheet() }
+
                     if model.canImportCodexLogin {
                         Button {
                             Task { await model.importCodexLogin() }
@@ -138,7 +151,7 @@ struct WelcomeView: View {
 
     private var finePrint: some View {
         HStack(spacing: 18) {
-            Label("Writing and artwork use your ChatGPT plan", systemImage: "text.quote")
+            Label("Writing and artwork use ChatGPT or any OpenRouter model", systemImage: "text.quote")
             Label("Music is recorded privately on this Mac", systemImage: "lock.fill")
         }
         .font(.system(size: 11.5, weight: .medium))

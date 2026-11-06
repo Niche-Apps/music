@@ -46,9 +46,20 @@ final class AppUpdater {
         }
     }
 
+    /// This is a local OpenRouter-enabled build: the upstream feed ships ChatGPT-only releases that would
+    /// silently replace it, so Sparkle never starts, never checks and never installs.
+    static let updatesDisabled = (Bundle.main.object(forInfoDictionaryKey: "SMDisableSparkle") as? Bool) ?? false
+
     private init() {
         controller = SPUStandardUpdaterController(
-            startingUpdater: true, updaterDelegate: delegate, userDriverDelegate: delegate)
+            startingUpdater: !Self.updatesDisabled, updaterDelegate: delegate, userDriverDelegate: delegate)
+        if Self.updatesDisabled {
+            // Overwrite choices persisted by the upstream build (same bundle id).
+            controller.updater.automaticallyChecksForUpdates = false
+            controller.updater.automaticallyDownloadsUpdates = false
+            canCheckForUpdates = false
+            return
+        }
         delegate.found = { [weak self] version in
             guard let self, self.installNow == nil else { return }
             self.pending = .available(version)
@@ -63,11 +74,15 @@ final class AppUpdater {
             .sink { [weak self] value in MainActor.assumeIsolated { self?.canCheckForUpdates = value } }
     }
 
-    func checkForUpdates() { controller.checkForUpdates(nil) }
+    func checkForUpdates() {
+        guard !Self.updatesDisabled else { return }
+        controller.checkForUpdates(nil)
+    }
 
     /// The sidebar button: installs a downloaded update and relaunches, or shows Sparkle's window for one
     /// that isn't downloaded yet.
     func installUpdate() {
+        guard !Self.updatesDisabled else { return }
         if let installNow {
             pending = .installing
             installNow()

@@ -8,10 +8,27 @@ struct AccountSettings: View {
     @State private var models: [ChatGPTModel] = []
     @State private var modelsError: String?
     @State private var confirmSignOut = false
+    @AppStorage(Pref.aiProvider) private var providerRaw = AIProvider.chatGPT.rawValue
 
     var body: some View {
         SettingsPane(height: 600) {
-            if let creds = model.credentials {
+            Section {
+                Picker("Provider", selection: Binding(
+                    get: { AIProvider(rawValue: providerRaw) ?? .chatGPT },
+                    set: { p in
+                        providerRaw = p.rawValue
+                        Task { await model.configureClient() }
+                    }
+                )) {
+                    ForEach(AIProvider.allCases) { Text($0.displayName).tag($0) }
+                }
+                .pickerStyle(.segmented)
+            } footer: {
+                Text("Switch any time. Your library stays the same.").settingsFooter()
+            }
+            if providerRaw == AIProvider.openRouter.rawValue {
+                OpenRouterAccountSection()
+            } else if let creds = model.credentials {
                 Section {
                     HStack(spacing: 12) {
                         Image(systemName: "person.crop.circle.fill")

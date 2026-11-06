@@ -65,6 +65,11 @@ final class AppModel {
     private(set) var taste = TasteProfile()
     /// The "while you wait" song for the first library build.
     private(set) var opener: OpenerState?
+    /// Generation is possible: ChatGPT signed in, or OpenRouter selected with an API key.
+    private(set) var isAIReady = false
+    var provider: AIProvider {
+        AIProvider(rawValue: UserDefaults.standard.string(forKey: Pref.aiProvider) ?? "") ?? .chatGPT
+    }
     var signInError: String?
     var isSigningIn = false
 
@@ -167,7 +172,7 @@ final class AppModel {
         recording.kick()
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
-        if credentials == nil {
+        if !isAIReady {
             phase = .welcome
         } else if !onboardingDone {
             phase = .onboarding
@@ -194,9 +199,53 @@ final class AppModel {
 
     func configureClient() async {
         let d = UserDefaults.standard
-        await services.client.setModels(
-            writing: d.string(forKey: Pref.writingModel) ?? ChatGPTClient.defaultWritingModel,
-            fast: d.string(forKey: Pref.fastModel) ?? ChatGPTClient.defaultFastModel)
+        if provider == .openRouter {
+            await services.client.configureOpenRouter(
+                apiKey: OpenRouterKey.current ?? "",
+                writing: d.string(forKey: Pref.openRouterWritingModel) ?? OpenRouterCatalog.defaultModel,
+                fast: d.string(forKey: Pref.openRouterFastModel) ?? OpenRouterCatalog.defaultModel,
+                imageModel: d.string(forKey: Pref.openRouterImageModel).flatMap { $0.isEmpty ? nil : $0 })
+            let cached = OpenRouterCatalog.cached(at: Paths.openRouterCatalog)
+            if !cached.isEmpty { await services.client.noteOpenRouterCatalog(cached) }
+        } else {
+            await services.client.useChatGPT()
+            await services.client.setModels(
+                writing: d.string(forKey: Pref.writingModel) ?? ChatGPTClient.defaultWritingModel,
+                fast: d.string(forKey: Pref.fastModel) ?? ChatGPTClient.defaultFastModel)
+        }
+        isAIReady = await services.client.isReady
+    }
+
+    /// Switches to OpenRouter. A non-empty `apiKey` is saved to the Keychain; an empty one keeps the stored
+    /// key or falls back to `OPENROUTER_API_KEY` from the environment.
+    func useOpenRouter(apiKey: String, model: String?) async {
+        signInError = nil
+        if !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !OpenRouterKey.save(apiKey) {
+            signInError = "Couldn’t save the API key to the Keychain."
+            return
+        }
+        if let model = model.flatMap(OpenRouterCatalog.normalizedModelID) {
+            UserDefaults.standard.set(model, forKey: Pref.openRouterWritingModel)
+            UserDefaults.standard.set(model, forKey: Pref.openRouterFastModel)
+        }
+        UserDefaults.standard.set(AIProvider.openRouter.rawValue, forKey: Pref.aiProvider)
+        await configureClient()
+        guard isAIReady else {
+            signInError = "Enter your OpenRouter API key to continue."
+            return
+        }
+        if phase == .welcome { afterSignIn() }
+    }
+
+    func useChatGPTProvider() async {
+        UserDefaults.standard.set(AIProvider.chatGPT.rawValue, forKey: Pref.aiProvider)
+        await configureClient()
+        if !isAIReady { phase = .welcome }
+    }
+
+    func clearOpenRouterKey() async {
+        OpenRouterKey.delete()
+        await configureClient()
     }
 
     // MARK: Account
@@ -210,6 +259,8 @@ final class AppModel {
                 await MainActor.run { _ = NSWorkspace.shared.open(url) }
             }
             NSApp.activate()
+            UserDefaults.standard.set(AIProvider.chatGPT.rawValue, forKey: Pref.aiProvider)
+            await configureClient()
             afterSignIn()
         } catch is CancellationError {
         } catch {
@@ -227,6 +278,8 @@ final class AppModel {
     func importCodexLogin() async {
         do {
             credentials = try await services.auth.importCodexLogin()
+            UserDefaults.standard.set(AIProvider.chatGPT.rawValue, forKey: Pref.aiProvider)
+            await configureClient()
             afterSignIn()
         } catch {
             signInError = error.localizedDescription
@@ -246,7 +299,8 @@ final class AppModel {
     func signOut() async {
         await services.auth.signOut()
         credentials = nil
-        phase = .welcome
+        await configureClient()
+        if !isAIReady { phase = .welcome }
     }
 
     // MARK: Model
