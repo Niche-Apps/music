@@ -97,7 +97,7 @@ for (const al of albumRows) {
     id: t.id, n: t.trackNumber, title: t.title, duration: t.duration ? Math.round(t.duration) : null,
     ready: t.status === 'ready', explicit: !!t.isExplicit, favorite: !!t.isFavorite,
     mood: t.mood, bpm: t.bpm, vocal: t.vocal,
-    ...(clips[t.id] ? { clip: `media/clips/${t.id}.m4a`, peaks: clips[t.id].peaks, lyrics: t.lyrics } : {}),
+    ...(clips[t.id] ? { clip: `media/clips/${t.id}.m4a`, clipStart: clips[t.id].start, peaks: clips[t.id].peaks, lyrics: t.lyrics } : {}),
   }))
   albums.push({
     id: al.id, artistID: al.artistID, title: al.title, year: al.releaseYear, kind: al.kind, label: al.label,

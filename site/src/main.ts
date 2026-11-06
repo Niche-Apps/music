@@ -188,6 +188,12 @@ const SWITCH = 0.07
 
 function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: boolean) {
   const studioTrack = cast.nowPlaying
+  /** Scrolling through the Lyrics step: walk the lines the clip actually sings when they're timed, else the song. */
+  const lyricsByScroll = (f: number) => {
+    const cues = studioTrack.track.cues?.filter((c): c is number => c != null)
+    if (cues?.length) win.setLyricsTime(cues[0] + f * (cues[cues.length - 1] - cues[0] + 1), studioTrack.track.cues!)
+    else win.setLyricsProgress(f)
+  }
   const hero = lib.artist(cast.artists[cast.artists.length - 1])
   const createIdea = 'Late-night jazz from a fictional 1960s Lisbon'
   const brief = 'a stripped-back winter record'
@@ -270,7 +276,7 @@ function tour(lib: Library, cast: Cast, win: AppWindow, player: Player, flow: bo
       page: 'np', nav: 'artists',
       shots: [{ t: 0, rect: [660, 120, 680, 640] }, { t: 0.8, rect: [660, 120, 680, 640] }, { t: 0.88, rect: [900, 0, 540, 420] }],
 
-      update: (t) => { win.setStudio(null); if (!(player.playing && player.track?.id === studioTrack.track.id)) win.setLyricsProgress(clamp(t / 0.85)) },
+      update: (t) => { win.setStudio(null); if (!(player.playing && player.track?.id === studioTrack.track.id)) lyricsByScroll(clamp(t / 0.85)) },
       focus: [{ t: 0, rect: [640, 120, 760, 660] }, { t: 0.82, rect: [640, 120, 760, 660] }, { t: 0.97, rect: [1200, 0, 240, 160] }],
       cursor: [{ t: 0.8, sel: null }, { t: 0.86, sel: '.layer-np .corner button:last-child' }, { t: 0.95, sel: '.layer-np .corner button:last-child', click: true }],
     },
@@ -1016,7 +1022,10 @@ function dock(lib: Library, player: Player, win: AppWindow, cast: Cast) {
     $<HTMLElement>('.bar i', el).style.width = `${(time / duration) * 100}%`
     win.setPlaying(playing)
     win.setProgress(time / duration, time, duration)
-    if (track.id === cast.nowPlaying.track.id && win.view === 'nowplaying') win.setLyricsProgress(time / duration)
+    if (track.id === cast.nowPlaying.track.id && win.view === 'nowplaying') {
+      if (track.cues?.some((c) => c != null)) win.setLyricsTime(time, track.cues)
+      else win.setLyricsProgress(time / duration)
+    }
   })
 }
 

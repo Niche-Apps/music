@@ -676,9 +676,29 @@ export class AppWindow {
 
   /** Now Playing: highlight lyric line by fraction through the song. */
   setLyricsProgress(fraction: number) {
+    this.setLyricsLine(fraction * this.lyricsLines.length - 0.5)
+  }
+
+  /** Now Playing: follow the clip's timed lines (`cues`, seconds per line), easing to each line just before
+   *  it's sung. Lines the clip doesn't reach stay where they fall. */
+  setLyricsTime(time: number, cues: (number | null)[]) {
+    const timed = cues.map((c, k) => [k, c] as const).filter((x): x is readonly [number, number] => x[1] != null)
+    if (!timed.length) return
+    let f = timed[0][0]
+    for (let n = 0; n < timed.length; n++) {
+      const [k, at] = timed[n]
+      if (time < at) break
+      const next = timed[n + 1]
+      const lead = 0.35
+      f = next ? k + (next[0] - k) * Math.max(0, Math.min(1, (time - (next[1] - lead)) / lead)) : k
+    }
+    this.setLyricsLine(f)
+  }
+
+  private setLyricsLine(line: number) {
     const lines = this.lyricsLines
     if (!lines.length) return
-    const f = Math.max(0, Math.min(lines.length - 1, fraction * lines.length - 0.5))
+    const f = Math.max(0, Math.min(lines.length - 1, line))
     lines.forEach((l, k) => {
       const d = Math.abs(k - f)
       l.style.opacity = String(k < f ? Math.max(0.5, 1 - d * 0.5) : Math.max(0.3, 1 - d * 0.7))

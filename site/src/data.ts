@@ -27,6 +27,10 @@ export interface Track {
   clip?: string
   peaks?: number[]
   lyrics?: string
+  /** Where the clip starts in the song, in seconds. */
+  clipStart?: number
+  /** Per lyric line (headers excluded): the second in the clip where it starts, or null if it isn't heard. */
+  cues?: (number | null)[]
 }
 
 export interface Album {

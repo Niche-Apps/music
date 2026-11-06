@@ -17,9 +17,11 @@ Everything shown comes from a real Standard Music library, exported with:
 swiftc -O tools/clip.swift -o /tmp/clip     # preview clips + waveform peaks
 swiftc -O tools/focus.swift -o /tmp/focus   # face-aware banner focus (same as the app)
 node tools/export-library.mjs "<…/Application Support/StandardMusic/Library>" --clip /tmp/clip --focus /tmp/focus
+python3 tools/align-lyrics.py public/data/library.json   # needs: pip install mlx-whisper
 ```
 
-That writes `public/data/library.json` and `public/media/` (portraits, covers, 45-second clips).
+That writes `public/data/library.json` and `public/media/` (portraits, covers, 45-second clips). The last
+step transcribes each clip and times its lyric lines (`cues`), so Now Playing highlights the line being sung.
 
 ## Downloads
 
