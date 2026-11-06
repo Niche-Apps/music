@@ -315,7 +315,7 @@ struct BuildingView: View {
             Button {
                 retrying = true
                 Task {
-                    try? await model.services.builder.resumeUnfinished()
+                    try? await model.services.builder.resumeUnfinished(retryFailed: true)
                     retrying = false
                 }
             } label: {

@@ -228,3 +228,40 @@ let petSchema: JSON = Schema.object(["name": ["type": "string"], "age": ["type":
         #expect(OpenRouterKey.resolve(stored: "", environment: [:]) == nil)
     }
 }
+
+@Suite struct OpenRouterTransientErrorTests {
+    @Test func droppedConnectionsAreTransientAndRetryable() {
+        #expect(OpenRouterClient.isTransient(URLError(.networkConnectionLost)))
+        #expect(OpenRouterClient.isTransient(URLError(.timedOut)))
+        #expect(!OpenRouterClient.isTransient(URLError(.cancelled)))
+        #expect(ChatGPTError.failed("Lost the connection").isRetryable)
+    }
+}
+
+@Suite struct OpenRouterFallbackTests {
+    @Test func deadModelFallsBackToFreeRouter() async throws {
+        // Selected model 404s (schema + prompt-guided), then the free router answers.
+        let mock = MockTransport([
+            (404, #"{"error":{"message":"No endpoints found"}}"#),
+            (404, #"{"error":{"message":"No endpoints found"}}"#),
+            (200, chat(#"{"name":"Kit","age":4}"#)),
+        ])
+        let auth = ChatGPTAuth(directory: FileManager.default.temporaryDirectory.appending(path: UUID().uuidString))
+        let client = ChatGPTClient(auth: auth, openRouterTransport: mock.transport)
+        await client.configureOpenRouter(apiKey: "k", writing: "stealth/dead", fast: "stealth/dead", imageModel: nil)
+        let pet = try await client.json(Pet.self, schemaName: "pet", schema: petSchema, instructions: "", prompt: "")
+        #expect(pet == Pet(name: "Kit", age: 4))
+        #expect(mock.bodies().last?["model"] as? String == OpenRouterCatalog.defaultModel)
+    }
+
+    @Test func keyLimitDoesNotFallBackOrLoop() async throws {
+        let mock = MockTransport([(403, #"{"error":{"message":"Key limit exceeded"}}"#)])
+        let auth = ChatGPTAuth(directory: FileManager.default.temporaryDirectory.appending(path: UUID().uuidString))
+        let client = ChatGPTClient(auth: auth, openRouterTransport: mock.transport)
+        await client.configureOpenRouter(apiKey: "k", writing: "a/b", fast: "a/b", imageModel: nil)
+        await #expect(throws: ChatGPTError.self) {
+            _ = try await client.json(Pet.self, schemaName: "pet", schema: petSchema, instructions: "", prompt: "")
+        }
+        #expect(mock.requests.count == 1)
+    }
+}

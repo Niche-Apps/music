@@ -153,9 +153,11 @@ public actor ChatGPTClient {
     ) async throws -> T {
         let format: JSON = ["type": "json_schema", "name": .string(schemaName), "schema": schema, "strict": true]
         var attempt = 0
+        var fellBack = false
         while true {
             do {
-                let model = quality == .writing ? writingModel : fastModel
+                var model = quality == .writing ? writingModel : fastModel
+                if fellBack { model = OpenRouterCatalog.defaultModel }
                 let data: Data
                 if provider == .openRouter {
                     data = try await requireOpenRouter().json(
@@ -175,7 +177,25 @@ public actor ChatGPTClient {
             } catch let error as ChatGPTError where error.isRetryable && attempt < retries {
                 attempt += 1
                 try await Task.sleep(for: .seconds(backoff(for: error, attempt: attempt)))
+            } catch let error as ChatGPTError where shouldFallBack(error, quality: quality, fellBack: fellBack) {
+                // The chosen OpenRouter model is dead, rejecting requests or dropping connections: switch to the
+                // free router (never a paid model) instead of failing the whole build.
+                gptLog.error("OpenRouter model failed (\(error.localizedDescription, privacy: .public)); falling back to \(OpenRouterCatalog.defaultModel, privacy: .public)")
+                fellBack = true
+                attempt = 0
             }
+        }
+    }
+
+    /// Whether an OpenRouter failure on the selected model should be retried on the free router.
+    func shouldFallBack(_ error: ChatGPTError, quality: Quality, fellBack: Bool) -> Bool {
+        guard provider == .openRouter, !fellBack else { return false }
+        let model = quality == .writing ? writingModel : fastModel
+        guard model != OpenRouterCatalog.defaultModel else { return false }
+        switch error {
+        case .rateLimited, .failed, .malformed: return true
+        case .http(let code, _): return [400, 402, 404, 408, 409, 422, 429].contains(code) || code >= 500
+        default: return false
         }
     }
 
@@ -184,8 +204,24 @@ public actor ChatGPTClient {
         async throws -> String
     {
         if provider == .openRouter {
-            return try await requireOpenRouter().text(
-                instructions: instructions, prompt: prompt, model: quality == .writing ? writingModel : fastModel)
+            let client = try requireOpenRouter()
+            var model = quality == .writing ? writingModel : fastModel
+            var attempt = 0
+            while true {
+                do {
+                    let text = try await client.text(instructions: instructions, prompt: prompt, model: model)
+                    if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { throw ChatGPTError.malformed("empty text") }
+                    return text
+                } catch let error as ChatGPTError where error.isRetryable && attempt < 3 {
+                    attempt += 1
+                    try await Task.sleep(for: .seconds(backoff(for: error, attempt: attempt)))
+                } catch let error as ChatGPTError where model != OpenRouterCatalog.defaultModel
+                    && shouldFallBack(error, quality: quality, fellBack: false)
+                {
+                    model = OpenRouterCatalog.defaultModel
+                    attempt = 0
+                }
+            }
         }
         return try await respond(
             model: quality == .writing ? writingModel : fastModel, instructions: instructions, prompt: prompt,

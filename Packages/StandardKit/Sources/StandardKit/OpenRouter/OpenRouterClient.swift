@@ -244,11 +244,23 @@ public actor OpenRouterClient {
             config.timeoutIntervalForResource = 600
             let session = URLSession(configuration: config)
             self.transport = { request in
-                let (data, response) = try await session.data(for: request)
+                let data: Data
+                let response: URLResponse
+                do {
+                    (data, response) = try await session.data(for: request)
+                } catch let error as URLError where OpenRouterClient.isTransient(error) {
+                    // Dropped/timed-out connections are retryable (ChatGPTError.failed), not batch-ending.
+                    throw ChatGPTError.failed("Lost the connection to OpenRouter (\(error.localizedDescription)). Retrying…")
+                }
                 guard let http = response as? HTTPURLResponse else { throw ChatGPTError.failed("No response") }
                 return (data, http)
             }
         }
+    }
+
+    static func isTransient(_ error: URLError) -> Bool {
+        [.networkConnectionLost, .timedOut, .notConnectedToInternet, .cannotConnectToHost, .cannotFindHost,
+         .dnsLookupFailed, .secureConnectionFailed, .badServerResponse, .resourceUnavailable].contains(error.code)
     }
 
     public func noteCatalog(_ models: [OpenRouterModel]) {
@@ -382,8 +394,9 @@ public actor OpenRouterClient {
     static func error(status: Int, data: Data) -> ChatGPTError {
         let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         let message = (root?["error"] as? [String: Any])?["message"] as? String ?? String(decoding: data.prefix(240), as: UTF8.self)
-        if status == 401 { return .failed("OpenRouter rejected the API key. Check it in Settings › Account.") }
-        if status == 402 { return .failed("OpenRouter: out of credits. Pick a free model or add credits.") }
+        if status == 401 { return .http(401, "OpenRouter rejected the API key. Check it in Settings › Account.") }
+        if status == 402 { return .http(402, "OpenRouter: out of credits. Pick a free model or add credits.") }
+        if status == 403 { return .http(403, "OpenRouter: \(message) (check your key's limit at openrouter.ai/settings/keys)") }
         return .http(status, "OpenRouter: \(message)")
     }
 }

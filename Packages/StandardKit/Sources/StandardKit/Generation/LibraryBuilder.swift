@@ -106,8 +106,15 @@ public actor LibraryBuilder {
         var statuses = [BatchStatus.planning.rawValue, BatchStatus.running.rawValue]
         if retryFailed { statuses.append(BatchStatus.failed.rawValue) }
         let batches = try db.writer.write { db in
-            let batches = try GenerationBatch.filter(statuses.contains(Column("status"))).order(Column("createdAt")).fetchAll(db)
+            var batches = try GenerationBatch.filter(statuses.contains(Column("status"))).order(Column("createdAt")).fetchAll(db)
             if retryFailed {
+                // Several failed first-library attempts would each rebuild 100+ artists; retry only the newest.
+                let failedInitial = batches.filter { $0.status == .failed && $0.kind == .initialLibrary }
+                let superseded = Set(failedInitial.dropLast().map(\.id))
+                for id in superseded {
+                    try db.execute(sql: "UPDATE generationBatch SET status = 'cancelled' WHERE id = ?", arguments: [id])
+                }
+                batches.removeAll { superseded.contains($0.id) }
                 for batch in batches where batch.status == .failed {
                     try db.execute(
                         sql: "UPDATE artist SET status = CASE WHEN soul = '' THEN 'planned' ELSE 'written' END WHERE batchID = ? AND status = 'failed'",
@@ -324,16 +331,30 @@ public actor LibraryBuilder {
             try await withThrowingTaskGroup(of: Void.self) { group in
                 for chunk in chunks {
                     group.addTask {
-                        try await self.rosterChunk(chunk, batch: batch, profile: profile, request: request, seed: seed)
+                        do {
+                            try await self.rosterChunk(chunk, batch: batch, profile: profile, request: request, seed: seed)
+                        } catch let error as ChatGPTError {
+                            // One bad chunk (dropped connection, malformed JSON) mustn't sink the whole roster;
+                            // the outer loop re-plans whatever is still missing. Rate limits and auth still bubble up.
+                            if case .rateLimited = error { throw error }
+                            if case .http(let code, _) = error, [401, 402, 403].contains(code) { throw error }
+                            buildLog.error("Roster chunk failed, will retry: \(error.localizedDescription, privacy: .public)")
+                            await self.noteChunkError(error)
+                        }
                     }
                 }
                 try await group.waitForAll()
             }
             let have = try await db.reader.read { try Artist.filter(Column("batchID") == batch.id).fetchCount($0) }
             missing = request.artistCount - have
+            if have == 0, let error = lastChunkError, attempts >= 3 { lastChunkError = nil; throw error }
+            if missing > 0 { try await Task.sleep(for: .seconds(min(3 * attempts, 15))) }
             allSlots = Array(slots(for: request, profile: profile, count: request.artistCount).suffix(max(0, missing)))
         }
     }
+
+    private var lastChunkError: ChatGPTError?
+    private func noteChunkError(_ error: ChatGPTError) { lastChunkError = error }
 
     private func rosterChunk(
         _ chunk: [Slot], batch: GenerationBatch, profile: TasteProfile, request: BuildRequest, seed: Artist?

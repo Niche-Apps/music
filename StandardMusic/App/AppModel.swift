@@ -179,7 +179,9 @@ final class AppModel {
             installModelIfNeeded()
         } else {
             installModelIfNeeded()
-            try? await services.builder.resumeUnfinished()
+            // An empty library after onboarding means the first build failed; retry it instead of idling forever.
+            let empty = ((try? services.db.artistCount()) ?? 0) == 0
+            try? await services.builder.resumeUnfinished(retryFailed: empty)
             phase = libraryEntered ? .library : .building
         }
         switch ProcessInfo.processInfo.environment["SM_FORCE_PHASE"] {
@@ -290,7 +292,7 @@ final class AppModel {
         installModelIfNeeded()
         if onboardingDone {
             phase = libraryEntered ? .library : .building
-            Task { try? await services.builder.resumeUnfinished() }
+            Task { try? await services.builder.resumeUnfinished(retryFailed: ((try? services.db.artistCount()) ?? 0) == 0) }
         } else {
             withAnimation(.smooth(duration: 0.6)) { phase = .onboarding }
         }
