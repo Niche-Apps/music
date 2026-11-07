@@ -154,12 +154,13 @@ struct CoverDrift: View {
     var tile: CGFloat = 150
     var spacing: CGFloat = 14
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.windowIsVisible) private var windowIsVisible
 
     var body: some View {
         GeometryReader { geo in
             let perColumn = max(1, covers.count / columns)
             // Reduce Motion: the wall of covers holds still.
-            TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { context in
+            TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion || !windowIsVisible)) { context in
                 let t = context.date.timeIntervalSinceReferenceDate
                 HStack(alignment: .top, spacing: spacing) {
                     ForEach(0 ..< columns, id: \.self) { c in

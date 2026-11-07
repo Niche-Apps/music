@@ -132,6 +132,7 @@ private struct TrafficLightKeeper: NSViewRepresentable {
 struct NowPlayingBackground: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.windowIsVisible) private var windowIsVisible
     let album: Album
     @State private var cover: NSImage?
 
@@ -139,8 +140,10 @@ struct NowPlayingBackground: View {
         let colors = paletteColors
         ZStack {
             Color.black
-            // Reduce Motion: the mesh holds still (a single frame) instead of drifting.
-            TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { context in
+            // Reduce Motion: the mesh holds still (a single frame) instead of drifting. It also holds
+            // still while nothing plays and while the window can't be seen: a full-window blur redrawn
+            // 30 times a second for hours is the costliest thing the app can do.
+            TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion || !windowIsVisible || !model.player.isPlaying)) { context in
                 let t = context.date.timeIntervalSinceReferenceDate
                 let energy = reduceMotion ? 0 : Double(model.player.level)
                 let amp = 0.06 + energy * 0.08
@@ -272,6 +275,7 @@ private struct PlayerColumn: View {
 /// Large artwork with a soft colored shadow; breathes slowly while the song is being recorded.
 private struct BreathingArtwork: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.windowIsVisible) private var windowIsVisible
     let album: Album
     var artistName: String? = nil
     let size: CGFloat
@@ -280,7 +284,7 @@ private struct BreathingArtwork: View {
     var body: some View {
         // Reduce Motion: keep the smaller, desaturated "in the studio" pose without the pulse.
         let animate = breathing && !reduceMotion
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: !animate)) { context in
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: !animate || !windowIsVisible)) { context in
             let phase = animate ? sin(context.date.timeIntervalSinceReferenceDate * 2 * .pi / 6) : 0
             ArtworkView(source: .album(album), size: size, cornerRadius: 12, highResolution: true, shadow: false,
                         accessibilityDescription: Spoken.albumCover(album.title, by: artistName))

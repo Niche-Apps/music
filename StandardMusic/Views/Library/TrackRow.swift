@@ -87,11 +87,12 @@ struct Equalizer: View {
     var animating: Bool
     var color: Color = .accentColor
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.windowIsVisible) private var windowIsVisible
 
     var body: some View {
         // Reduce Motion: hold the bars still (the "playing" pose) instead of bouncing.
         let animating = animating && !reduceMotion
-        TimelineView(.animation(minimumInterval: 1 / 12, paused: !animating)) { context in
+        TimelineView(.animation(minimumInterval: 1 / 12, paused: !animating || !windowIsVisible)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             HStack(alignment: .bottom, spacing: 1.5) {
                 ForEach(0 ..< 3, id: \.self) { i in

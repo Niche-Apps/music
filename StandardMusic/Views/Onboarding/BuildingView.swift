@@ -451,6 +451,7 @@ private struct SpotlightCard<Accessory: View>: View {
     let activity: String
     @ViewBuilder var accessory: Accessory
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.windowIsVisible) private var windowIsVisible
 
     private var key: String {
         switch content {
@@ -565,7 +566,7 @@ private struct SpotlightCard<Accessory: View>: View {
     private var brief: some View {
         HStack(spacing: 34) {
             ZStack {
-                TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { context in
+                TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion || !windowIsVisible)) { context in
                     let t = context.date.timeIntervalSinceReferenceDate
                     ZStack {
                         ForEach(0 ..< 3, id: \.self) { ring in
@@ -696,6 +697,7 @@ private struct RosterMarquee: View {
     let artists: [Artist]
     @State private var rowWidth: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.windowIsVisible) private var windowIsVisible
 
     var body: some View {
         HStack(spacing: 14) {
@@ -712,7 +714,7 @@ private struct RosterMarquee: View {
             .fixedSize()
             GeometryReader { _ in
                 // Reduce Motion: the roster stays put (scrollable names would be overkill here).
-                TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { context in
+                TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion || !windowIsVisible)) { context in
                     let t = context.date.timeIntervalSinceReferenceDate
                     let offset = rowWidth > 0 ? CGFloat((t * 26).truncatingRemainder(dividingBy: Double(rowWidth))) : 0
                     HStack(spacing: 0) {

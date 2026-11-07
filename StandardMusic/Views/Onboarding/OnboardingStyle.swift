@@ -6,10 +6,11 @@ struct AmbientBackground: View {
     var tint: Color = .pink
     var intensity: Double = 1
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.windowIsVisible) private var windowIsVisible
 
     var body: some View {
         // Reduce Motion: hold a single frame of the mesh instead of drifting.
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { context in
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion || !windowIsVisible)) { context in
             let t = context.date.timeIntervalSinceReferenceDate / 9
             MeshGradient(
                 width: 3, height: 3,

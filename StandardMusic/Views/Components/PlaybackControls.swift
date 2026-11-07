@@ -57,6 +57,7 @@ struct RecordingRing: View {
     var lineWidth: CGFloat = 2.5
     var tint: Color = .accentColor
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.windowIsVisible) private var windowIsVisible
 
     var body: some View {
         ZStack {
@@ -70,7 +71,7 @@ struct RecordingRing: View {
             } else {
                 // Driven by the clock rather than a repeating animation: a repeatForever animation
                 // also captures layout changes (the toolbar settling) and slides the ring around.
-                TimelineView(.animation(paused: reduceMotion)) { context in
+                TimelineView(.animation(paused: reduceMotion || !windowIsVisible)) { context in
                     let turn = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1)
                     Circle()
                         .trim(from: 0, to: 0.25)

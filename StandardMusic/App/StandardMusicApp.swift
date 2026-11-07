@@ -10,6 +10,7 @@ struct StandardMusicApp: App {
     var body: some Scene {
         Window("Standard Music", id: WindowID.main) {
             RootView()
+                .tracksWindowVisibility()
                 .environment(model)
                 .task {
                     AppDelegate.connect { [model] url in model.openShareFile(url) }
@@ -26,6 +27,7 @@ struct StandardMusicApp: App {
 
         Window("MiniPlayer", id: WindowID.mini) {
             MiniPlayerView()
+                .tracksWindowVisibility()
                 .environment(model)
         }
         .windowStyle(.plain)

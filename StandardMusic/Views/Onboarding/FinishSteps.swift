@@ -176,6 +176,7 @@ struct CenteredFlowLayout: Layout {
 struct TuningStep: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.windowIsVisible) private var windowIsVisible
     @Bindable var flow: OnboardingFlow
     @State private var line = 0
     @State private var start = Date()
@@ -194,7 +195,7 @@ struct TuningStep: View {
         VStack(spacing: 46) {
             ZStack {
                 // Reduce Motion: rings and orbiting portraits hold still.
-                TimelineView(.animation(minimumInterval: nil, paused: reduceMotion)) { context in
+                TimelineView(.animation(minimumInterval: nil, paused: reduceMotion || !windowIsVisible)) { context in
                     let t = context.date.timeIntervalSince(start)
                     ZStack {
                         ForEach(0 ..< 4, id: \.self) { ring in
