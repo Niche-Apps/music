@@ -77,6 +77,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 main.makeKeyAndOrderFront(nil)
             }
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            MainActor.assumeIsolated { AppLocation.offerMoveIfNeeded() }
+        }
     }
 
     /// Set by AppModel's owner; receives .standardalbum files opened from Finder, Mail or AirDrop.
