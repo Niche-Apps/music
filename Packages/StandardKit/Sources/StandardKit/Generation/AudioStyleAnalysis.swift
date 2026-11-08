@@ -85,12 +85,40 @@ public struct MeasuredAudioFeatures: Codable, Sendable, Hashable {
     /// Peak of the onset autocorrelation. Nil when the peak is too weak to report.
     public var tempoBPM: Double?
     public var tempoConfidence: Double
+
+    public init(
+        sampleRate: Double, sourceDuration: Double, analyzedSeconds: Double, rmsDBFS: Double, peakDBFS: Double,
+        crestDB: Double, silenceRatio: Double, spectralCentroidHz: Double?, spectralFlatness: Double?,
+        lowEnergy: Double, midEnergy: Double, highEnergy: Double, tempoBPM: Double?, tempoConfidence: Double
+    ) {
+        self.sampleRate = sampleRate
+        self.sourceDuration = sourceDuration
+        self.analyzedSeconds = analyzedSeconds
+        self.rmsDBFS = rmsDBFS
+        self.peakDBFS = peakDBFS
+        self.crestDB = crestDB
+        self.silenceRatio = silenceRatio
+        self.spectralCentroidHz = spectralCentroidHz
+        self.spectralFlatness = spectralFlatness
+        self.lowEnergy = lowEnergy
+        self.midEnergy = midEnergy
+        self.highEnergy = highEnergy
+        self.tempoBPM = tempoBPM
+        self.tempoConfidence = tempoConfidence
+    }
 }
 
 /// Words chosen by fixed thresholds on `MeasuredAudioFeatures`. They are not classifications.
 public struct InferredAudioDescriptors: Codable, Sendable, Hashable {
     public var words: [String]
     public var notes: [String]
+
+    /// Public so the app can build a failure report. The synthesized memberwise init is internal,
+    /// and the only other public init on a Codable struct is `init(from:)`.
+    public init(words: [String], notes: [String]) {
+        self.words = words
+        self.notes = notes
+    }
 }
 
 public struct AudioTrackSample: Codable, Sendable, Hashable {
@@ -98,6 +126,13 @@ public struct AudioTrackSample: Codable, Sendable, Hashable {
     public var status: AudioAnalysisStatus
     public var analyzedSeconds: Double
     public var sourceDuration: Double
+
+    public init(label: String, status: AudioAnalysisStatus, analyzedSeconds: Double, sourceDuration: Double) {
+        self.label = label
+        self.status = status
+        self.analyzedSeconds = analyzedSeconds
+        self.sourceDuration = sourceDuration
+    }
 }
 
 public enum AudioAnalysisStatus: String, Codable, Sendable, Hashable {
@@ -121,6 +156,21 @@ public struct AudioStyleReport: Codable, Sendable, Hashable {
     public var limitation: String
     public var coverage: String
     public var samples: [AudioTrackSample]
+
+    public init(
+        algorithmVersion: Int, fingerprint: AudioFingerprint?, status: AudioAnalysisStatus, measured: MeasuredAudioFeatures?,
+        inferred: InferredAudioDescriptors, confidence: Double, limitation: String, coverage: String, samples: [AudioTrackSample]
+    ) {
+        self.algorithmVersion = algorithmVersion
+        self.fingerprint = fingerprint
+        self.status = status
+        self.measured = measured
+        self.inferred = inferred
+        self.confidence = confidence
+        self.limitation = limitation
+        self.coverage = coverage
+        self.samples = samples
+    }
 
     public var chipLabel: String {
         switch status {
@@ -752,6 +802,11 @@ public enum AudioDecoderKind: String, Sendable, Equatable {
 public struct DecodedAudio: Sendable {
     public var buffer: PCMBuffer
     public var decoder: AudioDecoderKind
+
+    public init(buffer: PCMBuffer, decoder: AudioDecoderKind) {
+        self.buffer = buffer
+        self.decoder = decoder
+    }
 }
 
 public enum AudioSampleReader {
