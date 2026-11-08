@@ -43,9 +43,12 @@ struct LyricsView: View {
                     .id(info.id)
                 } else {
                     let recording = model.recording.active?.trackID == info.id
-                    placeholder(
-                        "Lyrics aren’t written yet", "pencil.and.scribble",
-                        recording ? "The songwriter is working on them now." : "They’re written just before the song is recorded.")
+                    VStack(spacing: 16) {
+                        placeholder(
+                            "Lyrics aren’t written yet", "pencil.and.scribble",
+                            recording ? "The songwriter is working on them now." : "They’re written just before the song is recorded.")
+                        LookUpLyricsButton(info: info)
+                    }
                 }
             } else {
                 placeholder("Lyrics", "quote.bubble", "Lyrics for the song that’s playing appear here.")
@@ -78,5 +81,31 @@ struct LyricsView: View {
             if i + 1 < lines.count, case .text = lines[i + 1] { return true }
             return false
         }.map(\.element)
+    }
+}
+
+/// Opens lyrics saved on the song, or a web search when there are none.
+struct LookUpLyricsButton: View {
+    @Environment(AppModel.self) private var model
+    let info: TrackInfo
+    var prominent = false
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Button("Look Up Lyrics", systemImage: "quote.bubble") { model.lookUpLyrics(info) }
+                .buttonStyle(prominent ? .borderedProminent : .bordered)
+                .help("Shows lyrics saved with this song, or opens a web search for the title and artist.")
+            if LyricsLookup.hasSingableLyrics(info.track.lyrics) {
+                Button("Search the Web for Lyrics…") { model.searchWebForLyrics(info) }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+            } else {
+                Text("Web results stay in your browser. This app doesn’t download them.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .accessibilityElement(children: .contain)
     }
 }

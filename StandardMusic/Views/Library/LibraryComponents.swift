@@ -218,6 +218,13 @@ struct TrackMenuItems: View {
             }
         }
         Divider()
+        Button("Look Up Lyrics", systemImage: "quote.bubble") { model.lookUpLyrics(info) }
+            .help("Shows lyrics saved with this song. If there are none, opens a web search for the title and artist. Audio isn’t uploaded, and lyrics from the web stay in the browser.")
+        if LyricsLookup.hasSingableLyrics(info.track.lyrics) {
+            Button("Search the Web for Lyrics…", systemImage: "safari") { model.searchWebForLyrics(info) }
+                .help("Opens a web search. Standard Music does not download or store those lyrics.")
+        }
+        Divider()
         Button("Go to Album", systemImage: "square.stack") { model.show(.album(info.album.id)) }
         Button("Go to Artist", systemImage: "music.microphone") { model.show(.artist(info.artist.id)) }
         if track.isPlayable {

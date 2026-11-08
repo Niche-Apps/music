@@ -422,12 +422,12 @@ final class AppModel {
 
     // MARK: Creating more music
 
-    func generateArtists(prompt: String?, count: Int) async {
+    func generateArtists(prompt: String?, count: Int, cues: [StyleCue] = []) async {
         let title = prompt.map { "“\($0)”" } ?? "New discoveries"
         do {
             try await services.builder.start(
                 kind: prompt == nil ? .discover : .prompt, title: title,
-                request: BuildRequest(artistCount: count, prompt: prompt))
+                request: BuildRequest(artistCount: count, prompt: prompt, styleCues: cues))
             toast = "Scouting \(count) new artists…"
         } catch {
             toast = error.localizedDescription
@@ -474,10 +474,47 @@ final class AppModel {
         }
     }
 
-    func draftLyrics(style: String, about: String) async -> String? {
-        do { return try await services.songWriter.draft(style: style, about: about) } catch {
+    func draftLyrics(style: String, about: String, cues: [StyleCue] = []) async -> String? {
+        do { return try await services.songWriter.draft(style: style, about: about, cues: cues) } catch {
             toast = error.localizedDescription
             return nil
+        }
+    }
+
+    /// Shows lyrics saved on the song. When there are none, opens a web search for the title and
+    /// artist. The search stays in the browser; this app does not download those lyrics or upload audio.
+    func lookUpLyrics(_ info: TrackInfo) {
+        switch LyricsLookup.lookUp(
+            title: info.track.title, artist: info.artist.name, album: info.album.title, localLyrics: info.track.lyrics)
+        {
+        case .showLocal:
+            showsQueue = false
+            showsLyrics = true
+            toast = "Showing the lyrics already written for “\(info.track.title)”."
+        case .webSearch(let url, let notice):
+            openLyricsSearch(url, notice: notice)
+        case .missingTitle:
+            toast = "This song needs a title before its lyrics can be looked up."
+        }
+    }
+
+    /// Always opens the web search, even when local lyrics exist. Labeled as a search, not as lyrics in the app.
+    func searchWebForLyrics(_ info: TrackInfo) {
+        switch LyricsLookup.webSearch(title: info.track.title, artist: info.artist.name, album: info.album.title) {
+        case .webSearch(let url, let notice):
+            openLyricsSearch(url, notice: notice)
+        case .missingTitle:
+            toast = "This song needs a title before its lyrics can be looked up."
+        case .showLocal:
+            break
+        }
+    }
+
+    private func openLyricsSearch(_ url: URL, notice: LyricsLookup.Notice) {
+        if NSWorkspace.shared.open(url) {
+            toast = notice.message
+        } else {
+            toast = "Couldn’t open a browser to search for lyrics. Nothing was changed."
         }
     }
 

@@ -190,6 +190,12 @@ public final class AppDatabase: Sendable {
                 t.add(column: "isCustom", .boolean).notNull().defaults(to: false)
             }
         }
+        m.registerMigration("v6-style-references") { db in
+            try db.alter(table: "track") { t in
+                t.add(column: "vocalOnly", .boolean).notNull().defaults(to: false)
+                t.add(column: "styleCues", .text).notNull().defaults(to: "[]")
+            }
+        }
         return m
     }
 

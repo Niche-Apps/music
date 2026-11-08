@@ -78,10 +78,14 @@ public actor ChatGPTClient {
     private var openRouter: OpenRouterClient?
     private var openRouterImageModel: String?
     private let openRouterTransport: OpenRouterClient.Transport?
+    /// Test double for the ChatGPT HTTPS calls. Production leaves this nil and uses `URLSession`.
+    public typealias ResponseTransport = @Sendable (URLRequest) async throws -> (Int, Data)
+    private let responseTransport: ResponseTransport?
 
-    public init(auth: ChatGPTAuth, openRouterTransport: OpenRouterClient.Transport? = nil) {
+    public init(auth: ChatGPTAuth, openRouterTransport: OpenRouterClient.Transport? = nil, responseTransport: ResponseTransport? = nil) {
         self.auth = auth
         self.openRouterTransport = openRouterTransport
+        self.responseTransport = responseTransport
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 180
         config.timeoutIntervalForResource = 600
@@ -273,16 +277,26 @@ public actor ChatGPTClient {
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 authorize(&request, creds)
                 request.setValue(UUID().uuidString, forHTTPHeaderField: "x-codex-image-turn-id")
-                let (data, response) = try await session.data(for: request)
-                let http = response as? HTTPURLResponse
-                if let http { recordUsage(http) }
-                let status = http?.statusCode ?? 0
+                let data: Data
+                let status: Int
+                let retryHeader: String?
+                if let responseTransport {
+                    (status, data) = try await responseTransport(request)
+                    retryHeader = nil
+                } else {
+                    let (raw, response) = try await session.data(for: request)
+                    let http = response as? HTTPURLResponse
+                    if let http { recordUsage(http) }
+                    status = http?.statusCode ?? 0
+                    data = raw
+                    retryHeader = http?.value(forHTTPHeaderField: "Retry-After")
+                }
                 if status == 401, !refreshed {
                     refreshed = true
                     continue
                 }
                 if status == 429 {
-                    let retry = (http?.value(forHTTPHeaderField: "Retry-After")).flatMap(Double.init)
+                    let retry = retryHeader.flatMap(Double.init)
                     let resets = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])
                         .flatMap { ($0["error"] as? [String: Any])?["resets_in_seconds"] as? Double }
                     throw ChatGPTError.rateLimited(
@@ -381,6 +395,23 @@ public actor ChatGPTClient {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
             authorize(&request, creds)
+            if let responseTransport {
+                let (status, data) = try await responseTransport(request)
+                if status == 401, !refreshed {
+                    refreshed = true
+                    continue
+                }
+                if status != 200 {
+                    let text = String(decoding: data, as: UTF8.self)
+                    if status == 429 {
+                        throw ChatGPTError.rateLimited(
+                            retryAfter: nil,
+                            message: "You've hit your ChatGPT usage limit for now. Generation will resume automatically.")
+                    }
+                    throw ChatGPTError.http(status, text)
+                }
+                return try Self.parseSSE(String(decoding: data, as: UTF8.self))
+            }
             let (bytes, response) = try await session.bytes(for: request)
             let http = response as? HTTPURLResponse
             if let http { recordUsage(http) }
@@ -407,38 +438,49 @@ public actor ChatGPTClient {
         }
     }
 
-    private func parse(_ bytes: URLSession.AsyncBytes) async throws -> Result {
-        var text = ""
-        var images: [Data] = []
-        for try await line in bytes.lines {
-            guard line.hasPrefix("data:") else { continue }
-            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
-            guard let data = payload.data(using: .utf8),
-                let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                let type = event["type"] as? String
-            else { continue }
-            switch type {
-            case "response.output_text.delta":
-                text += event["delta"] as? String ?? ""
-            case "response.output_item.done":
-                if let item = event["item"] as? [String: Any], item["type"] as? String == "image_generation_call",
-                    let b64 = item["result"] as? String, let image = Data(base64Encoded: b64)
-                {
-                    images.append(image)
-                }
-            case "response.failed", "error":
-                let response = event["response"] as? [String: Any]
-                let error = (response?["error"] ?? event["error"]) as? [String: Any]
-                let message = error?["message"] as? String ?? "The request failed."
-                if (error?["code"] as? String) == "rate_limit_exceeded" {
-                    throw ChatGPTError.rateLimited(retryAfter: nil, message: message)
-                }
-                throw ChatGPTError.failed(message)
-            default:
-                break
-            }
+    static func parseSSE(_ text: String) throws -> Result {
+        var result = Result(text: "", images: [])
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            try consume(String(line), into: &result)
         }
-        return Result(text: text, images: images)
+        return result
+    }
+
+    static func consume(_ line: String, into result: inout Result) throws {
+        guard line.hasPrefix("data:") else { return }
+        let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+        guard let data = payload.data(using: .utf8),
+            let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let type = event["type"] as? String
+        else { return }
+        switch type {
+        case "response.output_text.delta":
+            result.text += event["delta"] as? String ?? ""
+        case "response.output_item.done":
+            if let item = event["item"] as? [String: Any], item["type"] as? String == "image_generation_call",
+                let b64 = item["result"] as? String, let image = Data(base64Encoded: b64)
+            {
+                result.images.append(image)
+            }
+        case "response.failed", "error":
+            let response = event["response"] as? [String: Any]
+            let error = (response?["error"] ?? event["error"]) as? [String: Any]
+            let message = error?["message"] as? String ?? "The request failed."
+            if (error?["code"] as? String) == "rate_limit_exceeded" {
+                throw ChatGPTError.rateLimited(retryAfter: nil, message: message)
+            }
+            throw ChatGPTError.failed(message)
+        default:
+            break
+        }
+    }
+
+    private func parse(_ bytes: URLSession.AsyncBytes) async throws -> Result {
+        var result = Result(text: "", images: [])
+        for try await line in bytes.lines {
+            try Self.consume(line, into: &result)
+        }
+        return result
     }
 
     private func recordUsage(_ response: HTTPURLResponse) {

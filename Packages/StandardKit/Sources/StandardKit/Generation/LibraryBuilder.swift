@@ -14,15 +14,48 @@ public struct BuildRequest: Codable, Sendable, Hashable {
     /// Share of core / adjacent / wildcard artists.
     public var coreShare: Double
     public var adjacentShare: Double
+    /// Metadata from albums or songs the listener picked. Never audio.
+    public var styleCues: [StyleCue]
+    /// Set when the prompt asks for a cappella / no instruments. Older saved batches omit this and it
+    /// is derived from `prompt` on decode.
+    public var vocalOnly: Bool
 
     public init(artistCount: Int, prompt: String? = nil, seedArtistID: ID? = nil, coreShare: Double = 0.6,
-        adjacentShare: Double = 0.3)
+        adjacentShare: Double = 0.3, styleCues: [StyleCue] = [], vocalOnly: Bool? = nil)
     {
         self.artistCount = artistCount
         self.prompt = prompt
         self.seedArtistID = seedArtistID
         self.coreShare = coreShare
         self.adjacentShare = adjacentShare
+        self.styleCues = styleCues
+        self.vocalOnly = vocalOnly ?? VocalOnly.requests(prompt ?? "")
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case artistCount, prompt, seedArtistID, coreShare, adjacentShare, styleCues, vocalOnly
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        artistCount = try container.decode(Int.self, forKey: .artistCount)
+        prompt = try container.decodeIfPresent(String.self, forKey: .prompt)
+        seedArtistID = try container.decodeIfPresent(ID.self, forKey: .seedArtistID)
+        coreShare = try container.decodeIfPresent(Double.self, forKey: .coreShare) ?? 0.6
+        adjacentShare = try container.decodeIfPresent(Double.self, forKey: .adjacentShare) ?? 0.3
+        styleCues = try container.decodeIfPresent([StyleCue].self, forKey: .styleCues) ?? []
+        vocalOnly = try container.decodeIfPresent(Bool.self, forKey: .vocalOnly) ?? VocalOnly.requests(prompt ?? "")
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(artistCount, forKey: .artistCount)
+        try container.encodeIfPresent(prompt, forKey: .prompt)
+        try container.encodeIfPresent(seedArtistID, forKey: .seedArtistID)
+        try container.encode(coreShare, forKey: .coreShare)
+        try container.encode(adjacentShare, forKey: .adjacentShare)
+        try container.encode(styleCues, forKey: .styleCues)
+        try container.encode(vocalOnly, forKey: .vocalOnly)
     }
 }
 
@@ -262,6 +295,25 @@ public actor LibraryBuilder {
         db.value(TasteProfile.self, forKey: TasteProfile.storageKey) ?? TasteProfile()
     }
 
+    /// Vocal-only intent and style cues for an artist already in a batch. An explicit flag from the
+    /// caller (a new release whose brief says "acapella") wins; otherwise the batch prompt and the
+    /// listener's own taste notes are read. Taste notes that say "not acapella" do not count.
+    func styleContext(for artist: Artist, vocalOnly explicit: Bool? = nil, cues explicitCues: [StyleCue]? = nil) async throws -> (vocal: Bool, cues: [StyleCue]) {
+        let notes = profile().notes
+        var vocal = explicit ?? false
+        var cues = explicitCues ?? []
+        if explicit == nil || explicitCues == nil, let batchID = artist.batchID,
+            let batch = try await db.reader.read({ try GenerationBatch.fetchOne($0, key: batchID) }),
+            let request = try? JSONDecoder().decode(BuildRequest.self, from: Data(batch.request.utf8))
+        {
+            if explicit == nil { vocal = request.vocalOnly || VocalOnly.requests(request.prompt ?? "") }
+            if explicitCues == nil { cues = request.styleCues }
+        }
+        if explicit == true { vocal = true }
+        if VocalOnly.requests(notes) { vocal = true }
+        return (vocal, cues)
+    }
+
     // MARK: Planning (roster)
 
     struct Slot: Sendable {
@@ -356,7 +408,7 @@ public actor LibraryBuilder {
     private var lastChunkError: ChatGPTError?
     private func noteChunkError(_ error: ChatGPTError) { lastChunkError = error }
 
-    private func rosterChunk(
+    func rosterChunk(
         _ chunk: [Slot], batch: GenerationBatch, profile: TasteProfile, request: BuildRequest, seed: Artist?
     ) async throws {
         try Task.checkCancellation()
@@ -408,11 +460,13 @@ public actor LibraryBuilder {
             \(concepts.isEmpty ? "(none yet)" : concepts.joined(separator: "\n"))
             - Never reuse a distinctive word from an existing name (e.g. if "Mara Venn" exists, no other "Mara" or "Venn"). Avoid these names already in the library: \(taken.suffix(400).joined(separator: ", "))
             """
+        let vocal = request.vocalOnly || VocalOnly.requests(request.prompt ?? "") || VocalOnly.requests(profile.notes)
+        let styledPrompt = StylePipeline.appending(prompt, vocalOnly: vocal, cues: request.styleCues)
         let payload = try await textLimit.run {
             try await self.client.json(
                 RosterPayload.self, schemaName: "artist_roster", schema: schema,
                 instructions: "You are an A&R visionary and music historian inventing a believable alternate-universe music scene.",
-                prompt: prompt, effort: "low")
+                prompt: styledPrompt, effort: "low")
         }
         // Re-read: sibling chunks run concurrently and may have added names meanwhile.
         let current = try await db.reader.read { db in try String.fetchAll(db, sql: "SELECT name FROM artist") }
@@ -682,11 +736,13 @@ public actor LibraryBuilder {
             Visual approach for each release, in order:
             \(coverApproaches.enumerated().map { "  \($0.offset + 1). \($0.element)" }.joined(separator: "\n"))
             """
+        let context = try await styleContext(for: artist)
+        let styledPrompt = StylePipeline.appending(prompt, vocalOnly: context.vocal, cues: context.cues)
         let p = try await textLimit.run(first: urgent) {
             try await self.client.json(
                 ArtistPayload.self, schemaName: "artist_dossier", schema: schema,
                 instructions: "You are a music historian writing the canonical record of an alternate-universe artist. Be specific, sensory and consistent.",
-                prompt: prompt, effort: "low")
+                prompt: styledPrompt, effort: "low")
         }
         var updated = artist
         updated.bio = p.bio
@@ -739,8 +795,9 @@ public actor LibraryBuilder {
         var tracks: [Song]
     }
 
-    private func writeAlbum(_ album: Album, artist: Artist, urgent: Bool = false) async throws -> Album {
+    func writeAlbum(_ album: Album, artist: Artist, urgent: Bool = false, vocalOnly explicitVocal: Bool? = nil, cues explicitCues: [StyleCue]? = nil) async throws -> Album {
         setActivity(artist.id, "Writing songs for \(album.title)")
+        let context = try await styleContext(for: artist, vocalOnly: explicitVocal, cues: explicitCues)
         let siblings = try await db.reader.read { db in
             try Album.filter(Column("artistID") == artist.id).order(Column("releaseYear")).fetchAll(db)
         }
@@ -774,14 +831,15 @@ public actor LibraryBuilder {
             - genres: the album's specific genres.
             - tracks: exactly \(album.trackCount), in sequence order. Titles must feel like real songs by this artist in this era (vary length and style; no numbering).
               - details (private): 40–80 words: arrangement, instrumentation, groove, vocal approach, emotional arc and the lyric's mood (a feeling, an image or two, never a plot or a list of objects), plus structure (e.g. slow intro, double chorus, outro fade).
-              - styleTags: a tag line for a music generation model: 8–12 short comma-separated tags of one to three words each, in this order: genre/subgenre, 3–5 defining instruments in plain words, then the song's mood and a tempo word. Add a language only if the song is not in English. No production or era phrases, no sentences. Never describe the singer — the artist's fixed voice is added automatically. Must reflect this specific song, and must sound like the artist's genre: name the genre and use its defining instruments (a ballad by a rock band is still a rock ballad, with electric guitars). Leave out instruments and textures from other genres (synths on a rock song, acoustic guitar on electropop, "tactile", "felt", "intimate").
+              - \(context.vocal ? VocalOnly.tagInstruction : "styleTags: a tag line for a music generation model: 8–12 short comma-separated tags of one to three words each, in this order: genre/subgenre, 3–5 defining instruments in plain words, then the song's mood and a tempo word. Add a language only if the song is not in English. No production or era phrases, no sentences. Never describe the singer — the artist's fixed voice is added automatically. Must reflect this specific song, and must sound like the artist's genre: name the genre and use its defining instruments (a ballad by a rock band is still a rock ballad, with electric guitars). Leave out instruments and textures from other genres (synths on a rock song, acoustic guitar on electropop, \"tactile\", \"felt\", \"intimate\").")
               - bpm: realistic tempo.
             """
+        let styledPrompt = StylePipeline.appending(prompt, vocalOnly: context.vocal, cues: context.cues)
         let p = try await textLimit.run(first: urgent) {
             try await self.client.json(
                 AlbumPayload.self, schemaName: "album_tracks", schema: schema,
                 instructions: "You are a producer and A&R writing the definitive notes for a record. Be specific and musical.",
-                prompt: prompt, effort: "low")
+                prompt: styledPrompt, effort: "low")
         }
         guard !p.tracks.isEmpty else { throw ChatGPTError.malformed("album_tracks: no tracks") }
         var updated = album
@@ -793,9 +851,13 @@ public actor LibraryBuilder {
         updated.status = .written
         updated.trackCount = p.tracks.count
         let tracks = p.tracks.enumerated().map { i, s in
-            Track(
+            var track = Track(
                 albumID: album.id, artistID: artist.id, trackNumber: i + 1, title: s.title, details: s.details,
-                styleTags: s.styleTags, vocal: s.vocal, bpm: s.bpm, mood: s.mood)
+                styleTags: context.vocal ? VocalOnly.enforce(s.styleTags) : s.styleTags,
+                vocal: s.vocal, bpm: s.bpm, mood: s.mood, isInstrumental: false)
+            track.vocalOnly = context.vocal
+            track.storeStyleCues(context.cues)
+            return track
         }
         let final = updated
         try await db.writer.write { db in
@@ -875,7 +937,8 @@ public actor LibraryBuilder {
             "trackCount": Schema.integer(),
             "bioAddendum": Schema.string("One or two sentences to append to the bio about this release"),
         ])
-        let prompt = """
+        let vocalBrief = VocalOnly.requests(brief ?? "") || VocalOnly.requests(profile().notes)
+        let prompt = StylePipeline.appending("""
             \(artist.name) (\(artist.primaryGenre), \(artist.origin)) is releasing something new.
             Artist soul: \(artist.soul)
             Discography so far: \(albums.map { "\($0.releaseYear) \($0.title) (\($0.kind.label)): \($0.soul.prefix(220))" }.joined(separator: "\n"))
@@ -883,7 +946,7 @@ public actor LibraryBuilder {
 
             Plan their next release, dated \(max(2026, (albums.last?.releaseYear ?? 2025) + 1)) or later. It should feel like the natural next chapter — evolve the sound in a believable direction.
             soul (private): 90–160 words mapping concept, production and the tone/tempo/energy of the sequence. coverConcept: specific art direction distinct from earlier covers. trackCount: album 8–12, ep 4–6, single 1–3.
-            """
+            """, vocalOnly: vocalBrief, cues: [])
         let p = try await textLimit.run {
             try await self.client.json(
                 ReleasePayload.self, schemaName: "new_release", schema: schema,
@@ -899,7 +962,7 @@ public actor LibraryBuilder {
         if !p.bioAddendum.isEmpty {
             artist = try db.modifyArtist(artistID) { $0.bio += "\n\n" + p.bioAddendum } ?? artist
         }
-        album = try await writeAlbum(album, artist: artist)
+        album = try await writeAlbum(album, artist: artist, vocalOnly: vocalBrief ? true : nil)
         try await paintCover(album, artist: artist)
         _ = try db.modifyAlbum(album.id) { $0.status = .ready }
         return album.id

@@ -201,6 +201,11 @@ public struct Track: Codable, Sendable, Hashable, Identifiable, FetchableRecord,
     public var isExplicit: Bool = false
     /// Written by the listener (Create › Custom): their lyrics and style are recorded as given.
     public var isCustom: Bool = false
+    /// The listener asked for vocals with no instruments. Recording keeps that in the style tags.
+    /// The music engine only sees those tags; this is not a guarantee the model will obey.
+    public var vocalOnly: Bool = false
+    /// JSON `[StyleCue]` metadata for style references. Never audio, paths, or bookmarks.
+    public var styleCues: String = "[]"
     public var seed: Int64
     public var status: TrackStatus
     public var audioPath: String?

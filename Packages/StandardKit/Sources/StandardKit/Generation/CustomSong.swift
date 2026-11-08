@@ -12,13 +12,16 @@ public struct CustomSongRequest: Sendable, Hashable {
     public var instrumental: Bool
     /// Perform as this artist; nil invents a new one that fits the style.
     public var artistID: ID?
+    /// Albums or songs the listener picked as style references. Metadata only.
+    public var references: [StyleCue]
 
-    public init(lyrics: String, style: String, title: String? = nil, instrumental: Bool = false, artistID: ID? = nil) {
+    public init(lyrics: String, style: String, title: String? = nil, instrumental: Bool = false, artistID: ID? = nil, references: [StyleCue] = []) {
         self.lyrics = lyrics
         self.style = style
         self.title = title
         self.instrumental = instrumental
         self.artistID = artistID
+        self.references = references
     }
 }
 
@@ -53,8 +56,11 @@ extension LibraryBuilder {
     /// listener's words; the studio records it on demand like any other song.
     public func createCustomSong(_ request: CustomSongRequest) async throws -> ID {
         let style = request.style.trimmingCharacters(in: .whitespacesAndNewlines)
-        let lyrics = request.instrumental ? "" : request.lyrics.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !style.isEmpty || !lyrics.isEmpty else { throw ChatGPTError.failed("Add some lyrics or a style of music.") }
+        let vocalOnly = StylePipeline.vocalOnly(styleText: style, instrumentalToggle: request.instrumental)
+        let instrumental = request.instrumental && !vocalOnly
+        let cues = StylePipeline.promptCues(request.references)
+        let lyrics = instrumental ? "" : request.lyrics.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !style.isEmpty || !lyrics.isEmpty || !cues.isEmpty else { throw ChatGPTError.failed("Add some lyrics or a style of music.") }
         var existing: Artist?
         if let id = request.artistID {
             existing = try await db.reader.read { try Artist.fetchOne($0, key: id) }
@@ -96,23 +102,23 @@ extension LibraryBuilder {
             their press photo (60–110 words) built on this direction, keeping its framing, look, setting, light and casting:
             \(PortraitDirection.assign(genres: [style], isGroup: nil))
             """
-        let prompt = """
+        let prompt = StylePipeline.appending("""
             The listener wrote their own song in the studio. Honor what they asked for exactly.
             Style of music (their words): \(style.isEmpty ? "(none given — infer it from the lyrics)" : style)
             Title: \(request.title?.isEmpty == false ? request.title! : "(none — choose a fitting one from the lyrics)")
-            \(request.instrumental ? "It's an instrumental." : "Their lyrics:\n\(lyrics.isEmpty ? "(none)" : lyrics)")
+            \(instrumental ? "It's an instrumental." : "Their lyrics:\n\(lyrics.isEmpty ? "(none)" : lyrics)")
             \(performer)
 
             Return:
-            - lyrics: \(request.instrumental
+            - lyrics: \(instrumental
                 ? "section headers only, each followed by an empty line: [Intro], [Verse], [Chorus], [Verse], [Chorus], [Bridge], [Chorus], [Outro]."
                 : "the listener's lyrics with every word kept exactly as written. Only add section headers on their own lines ([Intro], [Verse], [Pre-Chorus], [Chorus], [Bridge], [Outro]) where they're missing, keep any they wrote, and put a blank line between sections. If no lyrics were given, write a complete song in the style.")
-            - styleTags: the tag line for the music model, 8–12 short comma-separated tags (one to three words each): genre and subgenre first, then 3–5 defining instruments in plain words, then mood and a tempo word. Keep everything the listener asked for (genre, era, instruments, mood, vocal gender) as tags. No sentences, no production phrases.
+            - \(vocalOnly ? VocalOnly.tagInstruction : "styleTags: the tag line for the music model, 8–12 short comma-separated tags (one to three words each): genre and subgenre first, then 3–5 defining instruments in plain words, then mood and a tempo word. Keep everything the listener asked for (genre, era, instruments, mood, vocal gender) as tags. No sentences, no production phrases.")
             - primaryGenre/genres: what this style is, for the library.
             - details: one or two sentences on what the song is, sonically and emotionally.
             - notes: liner notes for the single, 40–80 words, written like a music editor (don't mention the listener).
             - label: a fictional record label. coverConcept: specific art direction for the single's cover.
-            """
+            """, vocalOnly: vocalOnly, cues: cues)
         let schema = Schema.object(fields)
         let p = try await textLimit.run {
             try await self.client.json(
@@ -146,9 +152,12 @@ extension LibraryBuilder {
         album.notes = p.notes
         var track = Track(
             albumID: album.id, artistID: artist.id, trackNumber: 1, title: title, details: p.details,
-            styleTags: p.styleTags, vocal: request.instrumental ? "none" : p.vocal, bpm: p.bpm, mood: p.mood,
-            isInstrumental: request.instrumental)
-        track.lyrics = Self.customLyrics(p.lyrics, fallback: lyrics, instrumental: request.instrumental)
+            styleTags: vocalOnly ? VocalOnly.enforce(p.styleTags) : p.styleTags,
+            vocal: instrumental ? "none" : p.vocal, bpm: p.bpm, mood: p.mood,
+            isInstrumental: instrumental)
+        track.vocalOnly = vocalOnly
+        track.storeStyleCues(cues)
+        track.lyrics = Self.customLyrics(p.lyrics, fallback: lyrics, instrumental: instrumental)
         track.isExplicit = ContentRating.containsExplicitLanguage(track.lyrics ?? "")
         track.isCustom = true
         try db.save(album: album, tracks: [track])

@@ -18,6 +18,7 @@ struct CreateView: View {
     }
 
     @State private var prompt = ""
+    @State private var references: [StyleReference] = []
     @State private var count = 4
     @State private var data = Data()
     @State private var likeQuery = ""
@@ -53,7 +54,7 @@ struct CreateView: View {
                 .labelsHidden()
                 .frame(width: 220)
                 .accessibilityLabel("Create mode")
-                if mode == .simple { promptCard } else { CustomSongCard(artists: data.artists) }
+                if mode == .simple { promptCard } else { CustomSongCard(artists: data.artists, references: $references) }
                 NewReleaseCard(artists: data.artists)
                 HStack(alignment: .top, spacing: 18) {
                     discoverCard
@@ -65,6 +66,10 @@ struct CreateView: View {
             .frame(maxWidth: 980, alignment: .leading)
         }
         .navigationTitle("Create")
+        .task { references = StyleReferenceStore.load(model.services.db) }
+        .onChange(of: references) { _, updated in
+            try? StyleReferenceStore.save(model.services.db, updated)
+        }
         .observing(model.services.db) { db in
             let batches = try GenerationBatch.order(Column("createdAt").desc).limit(20).fetchAll(db)
             let ids = batches.map(\.id)
@@ -91,6 +96,8 @@ struct CreateView: View {
                 .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(promptFocused ? Color.accentColor.opacity(0.6) : .primary.opacity(0.1)))
                 .onSubmit(submitPrompt)
+            StyleReferenceEditor(references: $references)
+            if VocalOnly.requests(prompt) { VocalOnlyNote() }
             FlowLayout(spacing: 8) {
                 ForEach(Self.suggestions, id: \.self) { s in
                     Button(s) {
@@ -117,7 +124,7 @@ struct CreateView: View {
                 .buttonStyle(.glassProminent)
                 .controlSize(.large)
                 .keyboardShortcut(.return, modifiers: .command)
-                .disabled(prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || submitting)
+                .disabled((prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && references.compactMap(\.promptCue).isEmpty) || submitting)
             }
         }
         .padding(20)
@@ -126,10 +133,13 @@ struct CreateView: View {
 
     private func submitPrompt() {
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !submitting else { return }
+        guard !text.isEmpty || references.contains(where: { $0.promptCue != nil }), !submitting else { return }
         submitting = true
         Task {
-            await model.generateArtists(prompt: text, count: count)
+            let resolved = await StyleReferenceRefresh.resolve(references, db: model.services.db)
+            references = resolved.references
+            let brief = text.isEmpty ? "In the vein of the chosen style references." : text
+            await model.generateArtists(prompt: brief, count: count, cues: resolved.cues)
             prompt = ""
             submitting = false
         }
@@ -401,6 +411,7 @@ struct FlowLayout: Layout {
 struct CustomSongCard: View {
     @Environment(AppModel.self) private var model
     let artists: [Artist]
+    @Binding var references: [StyleReference]
     @State private var lyrics = ""
     @State private var style = ""
     @State private var title = ""
@@ -414,7 +425,7 @@ struct CustomSongCard: View {
 
     static let styleChips = [
         "pop", "indie rock", "hip hop", "r&b", "electropop", "country", "metal", "jazz", "lo-fi", "synthwave",
-        "female vocals", "male vocals", "upbeat", "melancholic", "acoustic", "808 bass", "80s", "orchestral",
+        "female vocals", "male vocals", "a cappella", "upbeat", "melancholic", "acoustic", "808 bass", "80s", "orchestral",
     ]
 
     var body: some View {
@@ -424,6 +435,7 @@ struct CustomSongCard: View {
                     Text("Lyrics").font(.system(size: 15, weight: .semibold)).accessibilityHeading()
                     Spacer()
                     Toggle("Instrumental", isOn: $instrumental).toggleStyle(.switch).controlSize(.small)
+                        .disabled(VocalOnly.requests(style))
                     Button {
                         draft()
                     } label: {
@@ -467,6 +479,11 @@ struct CustomSongCard: View {
                     .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(focus == .style ? Color.accentColor.opacity(0.6) : .primary.opacity(0.1)))
                     .accessibilityLabel("Style of music")
+                    .onChange(of: style) { _, new in
+                        if VocalOnly.requests(new) { instrumental = false }
+                    }
+                if VocalOnly.requests(style) { VocalOnlyNote() }
+                StyleReferenceEditor(references: $references)
                 FlowLayout(spacing: 6) {
                     ForEach(Self.styleChips, id: \.self) { chip in
                         Button("+ \(chip)") { add(chip) }
@@ -519,6 +536,7 @@ struct CustomSongCard: View {
     private var canCreate: Bool {
         !style.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || (!instrumental && !lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            || references.contains { $0.promptCue != nil }
     }
 
     private func add(_ chip: String) {
@@ -530,7 +548,8 @@ struct CustomSongCard: View {
     private func draft() {
         drafting = true
         Task {
-            if let text = await model.draftLyrics(style: style, about: title) { lyrics = text }
+            let cues = references.compactMap(\.promptCue)
+            if let text = await model.draftLyrics(style: style, about: title, cues: cues) { lyrics = text }
             drafting = false
         }
     }
@@ -538,9 +557,17 @@ struct CustomSongCard: View {
     private func create() {
         guard canCreate, !submitting else { return }
         submitting = true
-        let request = CustomSongRequest(
-            lyrics: lyrics, style: style, title: title.isEmpty ? nil : title, instrumental: instrumental, artistID: performer)
+        let lyricsNow = lyrics
+        let styleNow = style
+        let titleNow = title
+        let instrumentalNow = instrumental
+        let performerNow = performer
         Task {
+            let resolved = await StyleReferenceRefresh.resolve(references, db: model.services.db)
+            references = resolved.references
+            let request = CustomSongRequest(
+                lyrics: lyricsNow, style: styleNow, title: titleNow.isEmpty ? nil : titleNow, instrumental: instrumentalNow,
+                artistID: performerNow, references: resolved.cues)
             if await model.createCustomSong(request) {
                 lyrics = ""
                 title = ""

@@ -168,11 +168,16 @@ struct MiniPlayerLyrics: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 } else {
-                    Text(track?.isInstrumental == true ? "This one's an instrumental." : "Lyrics are written just before the studio records this song.")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 220)
-                        .multilineTextAlignment(.center)
+                    VStack(spacing: 12) {
+                        Text(track?.isInstrumental == true ? "This one's an instrumental." : "Lyrics are written just before the studio records this song.")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                        if let info = model.player.current {
+                            LookUpLyricsButton(info: info)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 220)
                 }
             }
             .padding(.horizontal, 18)

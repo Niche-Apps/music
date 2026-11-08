@@ -317,16 +317,16 @@ final class RecordingQueue {
             // A custom song can put an artist in a different style: its album's genre wins then.
             let genres = info.album.primaryGenre.isEmpty || info.album.primaryGenre == info.artist.primaryGenre
                 ? [info.artist.primaryGenre] + info.artist.genres : [info.album.primaryGenre] + info.album.genres
-            let genreTags = track.isCustom
-                ? GenreSound.customRecordingTags(tags: track.styleTags)
-                : GenreSound.recordingTags(tags: track.styleTags, genres: genres)
-            let style = Voice.recordingStyle(tags: genreTags, voice: voice, isInstrumental: track.isInstrumental)
+            let prepared = RecordingStyle.prepare(
+                tags: track.styleTags, genres: genres, voice: voice, isInstrumental: track.isInstrumental,
+                isCustom: track.isCustom, vocalOnly: track.vocalOnly, cues: track.decodedStyleCues)
+            let style = prepared.style
             let maxSeconds = 60 * max(1, UserDefaults.standard.double(forKey: Pref.maxSongMinutes))
             let job = EngineJob(
                 id: id, style: style, lyrics: lyrics, planning: ScorePlanningPref.current.rawValue,
                 seed: UInt64(track.seed), steps: GenerationQuality.current.steps,
                 maxSemanticTokens: Int(25 * maxSeconds), outputPath: output.path, title: track.title,
-                artist: info.artist.name, voice: voice, isInstrumental: track.isInstrumental, maxSeconds: maxSeconds)
+                artist: info.artist.name, voice: voice, isInstrumental: prepared.isInstrumental, maxSeconds: maxSeconds)
             activity.phase = .recording(EngineProgress(stage: "loading", stageFraction: 0, overall: 0, estimatedSongSeconds: nil, elapsed: 0))
             setActive(activity)
             let result = try await services.engine.render(job, modelDirectory: modelDir!) { progress in
