@@ -24,6 +24,9 @@ grep -E "^/.*(error|warning: unre):" "$LOG" | sort -u | head -60
 if [[ $STATUS -eq 0 ]]; then
   echo "BUILD SUCCEEDED: $ROOT/build/dev/Build/Products/$CONFIG/Standard Music.app"
 else
+  # Errors without a file path (package resolution, signing, linking) and the log's end, so CI shows why.
+  grep -E "error:|fatal|Could not|\*\* BUILD FAILED" "$LOG" | grep -v "^/" | sort -u | head -40
+  tail -25 "$LOG"
   echo "BUILD FAILED (full log: $LOG)"
 fi
 exit $STATUS
