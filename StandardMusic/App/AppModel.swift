@@ -391,10 +391,13 @@ final class AppModel {
     }
 
     /// Commissions a new record from an existing artist and opens it when it's ready.
-    func newRelease(from artist: Artist, brief: String? = nil) async {
+    func newRelease(
+        from artist: Artist, brief: String? = nil, format: AlbumKind? = nil, direction: ReleaseDirection = .nextChapter
+    ) async {
         toast = "\(artist.name) is heading back into the studio…"
         do {
-            let albumID = try await services.builder.newRelease(artistID: artist.id, brief: brief)
+            let albumID = try await services.builder.newRelease(
+                artistID: artist.id, brief: brief, format: format, direction: direction)
             toast = "New from \(artist.name)"
             showAlbum(albumID)
         } catch {

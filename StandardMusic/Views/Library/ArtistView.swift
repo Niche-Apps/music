@@ -352,13 +352,16 @@ struct HeroImage: View {
     }
 }
 
-/// "New Release": an optional brief, then a new album continuing the artist's story.
+/// "New Release": a format, a direction and an optional brief, then the artist's next record.
 struct NewReleaseButton: View {
     @Environment(AppModel.self) private var model
     @Environment(LibraryState.self) private var library
     let artist: Artist
     @State private var showsBrief = false
     @State private var brief = ""
+    /// nil lets the planner choose.
+    @State private var format: AlbumKind?
+    @State private var direction = ReleaseDirection.nextChapter
 
     var body: some View {
         let busy = library.releasing.contains(artist.id)
@@ -373,13 +376,21 @@ struct NewReleaseButton: View {
         .controlSize(.large)
         .fixedSize()
         .disabled(busy)
-        .help(busy ? "\(artist.name)’s next album is being written. It opens when it’s ready." : "Write \(artist.name)’s next album")
+        .help(busy ? "\(artist.name)’s next release is being written. It opens when it’s ready." : "Write \(artist.name)’s next release")
         .popover(isPresented: $showsBrief, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 10) {
                 Text("New release from \(artist.name)").font(.headline)
-                Text("Their next chapter: a new album with tracklist, liner notes and cover. Takes a minute or two.")
+                Text("A new record with tracklist, liner notes and cover, shaped by their story so far. Takes a minute or two.")
                     .font(.callout).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                Picker("Format", selection: $format) {
+                    Text("Auto").tag(AlbumKind?.none)
+                    ForEach([AlbumKind.single, .ep, .album], id: \.self) { Text($0.label).tag(AlbumKind?.some($0)) }
+                }
+                .pickerStyle(.segmented)
+                Picker("Direction", selection: $direction) {
+                    ForEach(ReleaseDirection.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
                 TextField("Optional brief — “a stripped-back winter record”", text: $brief, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
                     .lineLimit(1 ... 3)
@@ -400,7 +411,7 @@ struct NewReleaseButton: View {
 
     private func start() {
         showsBrief = false
-        model.newRelease(from: artist, brief: brief, library: library)
+        model.newRelease(from: artist, brief: brief, format: format, direction: direction, library: library)
         brief = ""
     }
 }

@@ -160,12 +160,15 @@ extension AppModel {
     }
 
     /// Writes a new album continuing the artist's story; the model navigates to it when done.
-    func newRelease(from artist: Artist, brief: String? = nil, library: LibraryState) {
+    func newRelease(
+        from artist: Artist, brief: String? = nil, format: AlbumKind? = nil, direction: ReleaseDirection = .nextChapter,
+        library: LibraryState
+    ) {
         guard !library.releasing.contains(artist.id) else { return }
         library.releasing.insert(artist.id)
         let brief = brief?.trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
-            await newRelease(from: artist, brief: brief?.isEmpty == false ? brief : nil)
+            await newRelease(from: artist, brief: brief?.isEmpty == false ? brief : nil, format: format, direction: direction)
             library.releasing.remove(artist.id)
         }
     }

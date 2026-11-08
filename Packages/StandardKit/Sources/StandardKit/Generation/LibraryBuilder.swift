@@ -756,7 +756,7 @@ public actor LibraryBuilder {
             - genres: the album's specific genres.
             - tracks: exactly \(album.trackCount), in sequence order. Titles must feel like real songs by this artist in this era (vary length and style; no numbering).
               - details (private): 40–80 words: arrangement, instrumentation, groove, vocal approach, emotional arc and the lyric's mood (a feeling, an image or two, never a plot or a list of objects), plus structure (e.g. slow intro, double chorus, outro fade).
-              - styleTags: a tag line for a music generation model: 8–12 short comma-separated tags of one to three words each, in this order: genre/subgenre, 3–5 defining instruments in plain words, then the song's mood and a tempo word. Add a language only if the song is not in English. No production or era phrases, no sentences. Never describe the singer — the artist's fixed voice is added automatically. Must reflect this specific song, and must sound like the artist's genre: name the genre and use its defining instruments (a ballad by a rock band is still a rock ballad, with electric guitars). Leave out instruments and textures from other genres (synths on a rock song, acoustic guitar on electropop, "tactile", "felt", "intimate").
+              - styleTags: a tag line for a music generation model: 8–12 short comma-separated tags of one to three words each, in this order: genre/subgenre, 3–5 defining instruments in plain words, then the song's mood and a tempo word. Add a language only if the song is not in English. No production or era phrases, no sentences. Never describe the singer — the artist's fixed voice is added automatically. Must reflect this specific song, and must sound like the artist's genre: name the genre and use its defining instruments (a ballad by a rock band is still a rock ballad, with electric guitars). Leave out instruments and textures from other genres (synths on a rock song, acoustic guitar on electropop, "tactile", "felt", "intimate").\(album.soul.hasPrefix("Arrangement:") ? "\n                Exception for this release: the album soul's Arrangement line replaces the genre's usual instruments. Name the genre, then that arrangement's instruments, in every styleTags line." : "")
               - bpm: realistic tempo.
             """
         let p = try await textLimit.run(first: urgent) {
@@ -875,7 +875,9 @@ public actor LibraryBuilder {
     }
 
     /// Writes a brand-new release that continues an artist's story. Returns the album id.
-    public func newRelease(artistID: ID, brief: String? = nil) async throws -> ID {
+    public func newRelease(
+        artistID: ID, brief: String? = nil, format: AlbumKind? = nil, direction: ReleaseDirection = .nextChapter
+    ) async throws -> ID {
         guard var artist = try await db.reader.read({ try Artist.fetchOne($0, key: artistID) }) else {
             throw ChatGPTError.failed("Unknown artist")
         }
@@ -887,7 +889,7 @@ public actor LibraryBuilder {
         let schema = Schema.object([
             "title": Schema.string(),
             "year": Schema.integer(),
-            "kind": Schema.enumeration(AlbumKind.allCases.map(\.rawValue)),
+            "kind": Schema.enumeration(format.map { [$0.rawValue] } ?? AlbumKind.allCases.map(\.rawValue)),
             "label": Schema.string(),
             "soul": Schema.string(),
             "coverConcept": Schema.string(),
@@ -900,8 +902,8 @@ public actor LibraryBuilder {
             Discography so far: \(albums.map { "\($0.releaseYear) \($0.title) (\($0.kind.label)): \($0.soul.prefix(220))" }.joined(separator: "\n"))
             \(brief.map { "The listener asked for: \($0)\n" } ?? "")\(GenreSound.guide(for: [artist.primaryGenre] + artist.genres))
 
-            Plan their next release, dated \(max(2026, (albums.last?.releaseYear ?? 2025) + 1)) or later. It should feel like the natural next chapter — evolve the sound in a believable direction.
-            soul (private): 90–160 words mapping concept, production and the tone/tempo/energy of the sequence. coverConcept: specific art direction distinct from earlier covers. trackCount: album 8–12, ep 4–6, single 1–3.
+            Plan their next release, dated \(max(2026, (albums.last?.releaseYear ?? 2025) + 1)) or later. \(direction.guidance(touchstones: artist.touchstones))
+            \(format.map { "Format: \($0.label.lowercased()).\n" } ?? "")            soul (private): 90–160 words mapping concept, production and the tone/tempo/energy of the sequence. coverConcept: specific art direction distinct from earlier covers. trackCount: album 8–12, ep 4–6, single 1–3.
             """
         let p = try await textLimit.run {
             try await self.client.json(
@@ -909,10 +911,12 @@ public actor LibraryBuilder {
                 instructions: "You are a music historian and A&R planning an artist's next record. Be specific and consistent.",
                 prompt: prompt, effort: "low")
         }
-        let kind = AlbumKind(rawValue: p.kind) ?? .album
+        let kind = format ?? AlbumKind(rawValue: p.kind) ?? .album
+        // Saved with the album so the songwriter (and a resumed build) keep the arrangement.
+        let soul = direction.arrangement.map { "Arrangement: \($0)\n\(p.soul)" } ?? p.soul
         var album = Album(
             artistID: artistID, title: p.title, releaseYear: max(p.year, albums.last?.releaseYear ?? 2026), kind: kind,
-            label: p.label, primaryGenre: artist.primaryGenre, genres: artist.genres, soul: p.soul,
+            label: p.label, primaryGenre: artist.primaryGenre, genres: artist.genres, soul: soul,
             coverPrompt: p.coverConcept, trackCount: Self.clampTracks(p.trackCount, kind))
         try db.save(album: album)
         if !p.bioAddendum.isEmpty {
@@ -928,5 +932,44 @@ public actor LibraryBuilder {
     public func repaintCover(albumID: ID) async throws {
         guard let info = try db.albumInfo(albumID) else { return }
         try await paintCover(info.album, artist: info.artist)
+    }
+}
+
+/// The shape of a New Release, picked by the listener.
+public enum ReleaseDirection: String, CaseIterable, Sendable {
+    /// The natural next step in their sound.
+    case nextChapter
+    /// A return to the sound of an earlier release, seen from where they are now.
+    case revisitEra
+    /// One of their influences leads.
+    case exploreInfluence
+    /// Stripped back to a small room.
+    case acoustic
+
+    public var label: String {
+        switch self {
+        case .nextChapter: "Next chapter"
+        case .revisitEra: "Revisit an earlier era"
+        case .exploreInfluence: "Lean into an influence"
+        case .acoustic: "Acoustic session"
+        }
+    }
+
+    func guidance(touchstones: [String]) -> String {
+        switch self {
+        case .nextChapter:
+            "It should feel like the natural next chapter: evolve the sound in a believable direction."
+        case .revisitEra:
+            "Revisit an earlier era: return to the sound and concerns of one specific earlier release (name it in the soul), seen from where they are now. Not a rerecording; new songs."
+        case .exploreInfluence:
+            "Let one influence lead\(touchstones.isEmpty ? "" : " (one of: \(touchstones.joined(separator: ", ")))"): borrow its sound and approach while staying recognizably them. Name the influence in the soul only; never in public text."
+        case .acoustic:
+            "An acoustic session: their songwriting in a small room with acoustic instruments, close vocals and space. New songs, written for this setting."
+        }
+    }
+
+    /// Fixed arrangement for every song on the release, when the direction calls for one.
+    var arrangement: String? {
+        self == .acoustic ? "acoustic session: acoustic guitar, piano, upright bass, light hand percussion; small room, close vocals" : nil
     }
 }

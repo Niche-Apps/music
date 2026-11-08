@@ -11,6 +11,7 @@ import StandardKit
 //   sm-dev roster <dir> <count> <genre, genre, …>   (an even spread of artists across those genres)
 //   sm-dev write <dir> <trackID>                     (lyrics, as the app writes them before recording)
 //   sm-dev take <dir> <trackID> <engine> [maxSeconds] (records exactly like the app's RecordingQueue)
+//   sm-dev release <dir> <artistID> <auto|single|ep|album> <nextChapter|revisitEra|exploreInfluence|acoustic> [brief]
 
 let args = CommandLine.arguments
 let dir = URL(fileURLWithPath: args[2])
@@ -87,6 +88,15 @@ case "portrait":
     try await builder.reimaginePortrait(artistID: args[3])
     let a = try await db.reader.read { try Artist.fetchOne($0, key: args[3]) }!
     print("\(a.name): \(a.imagePath ?? "")\n\(a.imagePrompt ?? "")")
+case "release":
+    let builder = LibraryBuilder(db: db, client: client, catalog: catalog, artwork: ArtworkStore(root: dir.appending(path: "Artwork")))
+    let albumID = try await builder.newRelease(
+        artistID: args[3], brief: args.count > 6 ? args[6] : nil, format: AlbumKind(rawValue: args[4]),
+        direction: ReleaseDirection(rawValue: args[5]) ?? .nextChapter)
+    let info = try db.albumInfo(albumID)!
+    print("\(info.album.title) · \(info.album.kind.label) · \(info.album.releaseYear) · cover \(info.album.coverPath ?? "nil")")
+    print("SOUL: \(info.album.soul)")
+    for t in try db.tracks(forAlbum: albumID) { print("\(t.trackNumber). \(t.title) — \(t.styleTags)") }
 case "draft":
     print(try await SongWriter(client: client, db: db).draft(style: args[3], about: args.count > 4 ? args[4] : ""))
 case "write":
