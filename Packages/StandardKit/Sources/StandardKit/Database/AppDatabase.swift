@@ -190,6 +190,12 @@ public final class AppDatabase: Sendable {
                 t.add(column: "isCustom", .boolean).notNull().defaults(to: false)
             }
         }
+        m.registerMigration("v6-no-future-releases") { db in
+            // New releases used to be dated the year after the artist's last one (#6).
+            try db.execute(
+                sql: "UPDATE album SET releaseYear = ? WHERE releaseYear > ?",
+                arguments: [LibraryBuilder.currentYear, LibraryBuilder.currentYear])
+        }
         return m
     }
 

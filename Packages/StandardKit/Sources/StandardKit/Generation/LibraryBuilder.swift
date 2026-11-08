@@ -383,7 +383,7 @@ public actor LibraryBuilder {
 
             Rules:
             - Names must be original and must NOT be the name of any real artist, band or alias. Mix naming styles: personal names, band names, one-word names, "The …", producer aliases, non-English names where the origin suggests it.
-            - Feel like real careers: varied countries and cities, formation years from the 1960s to 2025 shaped by the genre and the listener's eras.
+            - Feel like real careers: varied countries and cities, formation years from the 1960s to \(Self.currentYear - 1) shaped by the genre and the listener's eras.
             - The listener profile decides WHICH genres and artists to include, not how they sound. Each artist must sound authentically like its slot's genre as real fans know it; don't carry the listener's sonic preferences (e.g. "intimate", "warm", "acoustic") into other genres. An arena rock band is loud and huge; an electropop act is synthetic and glossy.
             - albumCount: mostly 2–4; some 1 (newcomers or one-album wonders); a few long careers of 6–10.
             - Every artist needs its own world — distinct settings, subjects, eras, personas and visual identity. Don't repeat concepts already in the library:
@@ -417,7 +417,7 @@ public actor LibraryBuilder {
             let slot = chunk[min(i, chunk.count - 1)]
             let artist = Artist(
                 name: name, primaryGenre: concept.primaryGenre, genres: concept.genres, tags: concept.tags,
-                origin: concept.origin, formedYear: min(max(concept.formedYear, 1950), 2025), tagline: concept.tagline,
+                origin: concept.origin, formedYear: min(max(concept.formedYear, 1950), Self.currentYear - 1), tagline: concept.tagline,
                 tier: slot.tier, plannedAlbumCount: min(max(concept.albumCount, 1), 10),
                 touchstones: concept.touchstones, batchID: batch.id)
             try db.save(artist: artist)
@@ -658,7 +658,7 @@ public actor LibraryBuilder {
             - portraitConcept: art direction for their press photo, 60–110 words, built on the direction assigned below (keep its framing, look, setting, light and casting; make each concrete and specific to this artist, their era and their scene). Describe the people as individuals: age, build, hair, clothes with real color, expression. People must be fictional. No text.
             Portrait direction:
             \(PortraitDirection.assign(genres: [artist.primaryGenre] + artist.genres + artist.tags, isGroup: nil))
-            - albums: exactly \(artist.plannedAlbumCount), chronological, years between \(artist.formedYear) and 2026 and plausible for the arc. kind: mostly "album"; use "ep", "single", "live" or "compilation" only where it makes the discography feel real. trackCount: album 8–12, ep 4–6, single 1–3, live 10–13, compilation 10–14.
+            - albums: exactly \(artist.plannedAlbumCount), chronological, years between \(artist.formedYear) and \(Self.currentYear) and plausible for the arc. kind: mostly "album"; use "ep", "single", "live" or "compilation" only where it makes the discography feel real. trackCount: album 8–12, ep 4–6, single 1–3, live 10–13, compilation 10–14.
               - soul (private): 90–160 words: the concept, the production approach and the sequence — map the tone, tempo and energy of the songs from opener to closer.
               - coverConcept: specific art direction for the cover, built on the visual approach assigned to that release below (keep its medium — don't turn a photo into a still life or a painting into a document). Say what is pictured, the palette, and the typography (or no text). True to the era and the genre's real sleeve conventions.
             Visual approach for each release, in order:
@@ -688,7 +688,7 @@ public actor LibraryBuilder {
             for o in p.albums {
                 let kind = AlbumKind(rawValue: o.kind) ?? .album
                 let album = Album(
-                    artistID: artistID, title: o.title, releaseYear: min(max(o.year, artist.formedYear), 2026),
+                    artistID: artistID, title: o.title, releaseYear: min(max(o.year, artist.formedYear), Self.currentYear),
                     kind: kind, label: o.label, primaryGenre: artist.primaryGenre, genres: artist.genres, soul: o.soul,
                     coverPrompt: o.coverConcept, trackCount: Self.clampTracks(o.trackCount, kind))
                 try album.insert(db)
@@ -697,6 +697,9 @@ public actor LibraryBuilder {
         }
         return updated
     }
+
+    /// Releases are never dated after this year.
+    static var currentYear: Int { Calendar.current.component(.year, from: Date()) }
 
     static func clampTracks(_ n: Int, _ kind: AlbumKind) -> Int {
         switch kind {
@@ -886,6 +889,8 @@ public actor LibraryBuilder {
         let albums = try await db.reader.read { db in
             try Album.filter(Column("artistID") == artistID).order(Column("releaseYear")).fetchAll(db)
         }
+        // It's playable right away, so it's out now: never dated in the future.
+        let year = Self.currentYear
         let schema = Schema.object([
             "title": Schema.string(),
             "year": Schema.integer(),
@@ -902,7 +907,7 @@ public actor LibraryBuilder {
             Discography so far: \(albums.map { "\($0.releaseYear) \($0.title) (\($0.kind.label)): \($0.soul.prefix(220))" }.joined(separator: "\n"))
             \(brief.map { "The listener asked for: \($0)\n" } ?? "")\(GenreSound.guide(for: [artist.primaryGenre] + artist.genres))
 
-            Plan their next release, dated \(max(2026, (albums.last?.releaseYear ?? 2025) + 1)) or later. \(direction.guidance(touchstones: artist.touchstones))
+            Plan their next release. It comes out this year, \(year) (artists often release more than once a year); year must be \(year), and the bio addendum must agree. \(direction.guidance(touchstones: artist.touchstones))
             \(format.map { "Format: \($0.label.lowercased()).\n" } ?? "")            soul (private): 90–160 words mapping concept, production and the tone/tempo/energy of the sequence. coverConcept: specific art direction distinct from earlier covers. trackCount: album 8–12, ep 4–6, single 1–3.
             """
         let p = try await textLimit.run {
@@ -915,7 +920,7 @@ public actor LibraryBuilder {
         // Saved with the album so the songwriter (and a resumed build) keep the arrangement.
         let soul = direction.arrangement.map { "Arrangement: \($0)\n\(p.soul)" } ?? p.soul
         var album = Album(
-            artistID: artistID, title: p.title, releaseYear: max(p.year, albums.last?.releaseYear ?? 2026), kind: kind,
+            artistID: artistID, title: p.title, releaseYear: year, kind: kind,
             label: p.label, primaryGenre: artist.primaryGenre, genres: artist.genres, soul: soul,
             coverPrompt: p.coverConcept, trackCount: Self.clampTracks(p.trackCount, kind))
         try db.save(album: album)
