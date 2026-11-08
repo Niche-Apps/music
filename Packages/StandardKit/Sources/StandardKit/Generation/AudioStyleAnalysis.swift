@@ -743,14 +743,25 @@ enum PCMWav {
     }
 }
 
-enum AudioSampleReader {
-    static func read(url: URL, maxSeconds: Double, isCancelled: @escaping @Sendable () throws -> Void) throws -> PCMBuffer {
+/// Which decoder produced a buffer. PCM WAV is parsed in-process. Everything else goes through `AVAudioFile`.
+public enum AudioDecoderKind: String, Sendable, Equatable {
+    case pcmWav
+    case avAudioFile
+}
+
+public struct DecodedAudio: Sendable {
+    public var buffer: PCMBuffer
+    public var decoder: AudioDecoderKind
+}
+
+public enum AudioSampleReader {
+    public static func read(url: URL, maxSeconds: Double, isCancelled: @escaping @Sendable () throws -> Void) throws -> DecodedAudio {
         try isCancelled()
         let header = try? Data(contentsOf: url, options: [.mappedIfSafe]).prefix(12)
         if let header, header.count >= 4, String(decoding: header.prefix(4), as: UTF8.self) == "RIFF" {
-            return try PCMWav.read(url: url, maxSeconds: maxSeconds)
+            return DecodedAudio(buffer: try PCMWav.read(url: url, maxSeconds: maxSeconds), decoder: .pcmWav)
         }
-        return try readCompressed(url: url, maxSeconds: maxSeconds, isCancelled: isCancelled)
+        return DecodedAudio(buffer: try readCompressed(url: url, maxSeconds: maxSeconds, isCancelled: isCancelled), decoder: .avAudioFile)
     }
 
     private static func readCompressed(url: URL, maxSeconds: Double, isCancelled: @escaping @Sendable () throws -> Void) throws -> PCMBuffer {

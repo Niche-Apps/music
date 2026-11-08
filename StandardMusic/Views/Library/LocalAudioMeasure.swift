@@ -40,10 +40,10 @@ enum LocalAudioMeasure {
     private static func readAndAnalyze(url: URL) async throws -> AudioAnalysisResult {
         let task = Task.detached(priority: .utility) { () throws -> AudioAnalysisResult in
             do {
-                let buffer = try AudioSampleReader.read(url: url, maxSeconds: AudioStyleAnalyzer.maxSeconds) {
+                let decoded = try AudioSampleReader.read(url: url, maxSeconds: AudioStyleAnalyzer.maxSeconds) {
                     try Task.checkCancellation()
                 }
-                return try AudioStyleAnalyzer.analyze(buffer) { try Task.checkCancellation() }
+                return try AudioStyleAnalyzer.analyze(decoded.buffer) { try Task.checkCancellation() }
             } catch is CancellationError {
                 throw CancellationError()
             } catch AudioReadError.unsupported {

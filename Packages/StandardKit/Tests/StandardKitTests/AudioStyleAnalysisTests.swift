@@ -1,3 +1,5 @@
+import AudioToolbox
+import AVFoundation
 import Foundation
 import Testing
 @testable import StandardKit
@@ -103,13 +105,16 @@ import Testing
         let many = (0 ..< 10).map { _ in tone(frequency: 440, seconds: 0.5, rate: 8000) }
         let kept = try AudioStyleAnalyzer.analyzeAll(many)
         #expect(kept.count == AudioStyleAnalyzer.maxTracks)
-        var seen = 0
+        let gate = CancelGate(limit: 1)
         #expect(throws: CancellationError.self) {
-            _ = try AudioStyleAnalyzer.analyzeAll([tone(frequency: 440, seconds: 0.5, rate: 8000), tone(frequency: 880, seconds: 0.5, rate: 8000)]) {
-                seen += 1
-                if seen > 1 { throw CancellationError() }
-            }
+            _ = try AudioStyleAnalyzer.analyzeAll([
+                tone(frequency: 440, seconds: 0.5, rate: 8000),
+                tone(frequency: 880, seconds: 0.5, rate: 8000),
+            ]) { try gate.tick() }
         }
+        // The callback ran, then refused another pass, and analyzeAll did not return a finished list.
+        #expect(gate.count > 1)
+        #expect(gate.count < 8)
     }
 
     @Test func clicksLandNearTheRequestedTempo() throws {
@@ -149,8 +154,9 @@ import Testing
         try PCMWav.writeMono16(samples: buffer.samples, sampleRate: 16000, to: url)
         defer { try? FileManager.default.removeItem(at: url) }
         let read = try AudioSampleReader.read(url: url, maxSeconds: 20) {}
-        #expect(abs(read.sampleRate - 16000) < 1)
-        let result = try AudioStyleAnalyzer.analyze(read)
+        #expect(read.decoder == .pcmWav)
+        #expect(abs(read.buffer.sampleRate - 16000) < 1)
+        let result = try AudioStyleAnalyzer.analyze(read.buffer)
         let centroid = try #require(result.measured?.spectralCentroidHz)
         #expect(abs(centroid - 440) < 80)
         let junk = FileManager.default.temporaryDirectory.appending(path: "bad-\(UUID().uuidString).wav")
@@ -215,6 +221,74 @@ import Testing
         #expect(prompt.contains("Style reference metadata"))
         #expect(!prompt.contains("Measured audio"))
         #expect(!prompt.contains("/Users/private/old.wav"))
+    }
+}
+
+/// Counts callback entries under a lock so a `@Sendable` cancellation closure can fail the next call
+/// without capturing a mutable local.
+private final class CancelGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+    private let limit: Int
+
+    init(limit: Int) { self.limit = limit }
+
+    func tick() throws {
+        let current = lock.withLock { () -> Int in
+            value += 1
+            return value
+        }
+        if current > limit { throw CancellationError() }
+    }
+
+    var count: Int { lock.withLock { value } }
+}
+
+@Suite struct CompressedAudioDecodeTests {
+    /// Writes a 440 Hz sine as AAC in an `.m4a` using `AVAudioFile`, then decodes it through the
+    /// non-WAV reader. This is the compressed path. The PCM WAV test covers the other reader.
+    @Test func aacM4ADecodesThroughAVAudioFileAndKeepsTheTone() throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "tone-\(UUID().uuidString).m4a")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let frames = try Self.writeAACSine(to: url)
+        let header = try Data(contentsOf: url).prefix(4)
+        #expect(String(decoding: header, as: UTF8.self) != "RIFF")
+        let bytes = try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int ?? 0
+        #expect(bytes > 0)
+        #expect(bytes < frames * 2)
+        let decoded = try AudioSampleReader.read(url: url, maxSeconds: 20) {}
+        #expect(decoded.decoder == .avAudioFile)
+        let result = try AudioStyleAnalyzer.analyze(decoded.buffer)
+        #expect(result.status == .measured)
+        let centroid = try #require(result.measured?.spectralCentroidHz)
+        #expect(abs(centroid - 440) < 200)
+        #expect((result.measured?.spectralFlatness ?? 1) < 0.5)
+    }
+
+    /// Finishes and closes the writer before returning, so the `.m4a` is complete for the decoder.
+    private static func writeAACSine(to url: URL) throws -> Int {
+        let settings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVSampleRateKey: 44_100,
+            AVNumberOfChannelsKey: 1,
+            AVEncoderBitRateKey: 64_000,
+        ]
+        let file = try AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+        let format = file.processingFormat
+        let frames = AVAudioFrameCount(format.sampleRate * 1.5)
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames), let channels = buffer.floatChannelData else {
+            throw AudioReadError.unreadable
+        }
+        buffer.frameLength = frames
+        let channelCount = Int(format.channelCount)
+        for index in 0 ..< Int(frames) {
+            let sample = Float(sin(2 * Double.pi * 440 * Double(index) / format.sampleRate)) * 0.5
+            for channel in 0 ..< channelCount {
+                channels[channel][index] = sample
+            }
+        }
+        try file.write(from: buffer)
+        return Int(frames)
     }
 }
 
