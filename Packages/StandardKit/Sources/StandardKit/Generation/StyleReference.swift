@@ -1,12 +1,11 @@
 import Foundation
 import GRDB
 
-/// Metadata the listener picked so a new song can lean toward something they already know.
+/// What the listener picked, plus an optional local audio measurement.
 ///
-/// This is not an analysis of the audio. Library picks contribute the genre, mood and style tags
-/// already stored for that album or song. Files contribute the title, artist, album and genre
-/// written in the file's tags (or the file name when the tags are empty). Audio bytes are never
-/// copied into a prompt, a request, or this value.
+/// `genres`, `styleTags`, `mood`, and `vocal` are metadata: library fields or file tags.
+/// `audio` is a separate measurement of the waveform when a recording could be decoded.
+/// Audio samples, paths, and bookmarks are never stored here and never sent to a model.
 public struct StyleCue: Codable, Sendable, Hashable, Identifiable {
     public enum Kind: String, Codable, Sendable {
         case libraryAlbum, librarySong, file, folder
@@ -25,11 +24,13 @@ public struct StyleCue: Codable, Sendable, Hashable, Identifiable {
     public var isInstrumental: Bool
     /// A short factual note for the text model ("12 songs"). Never a music-model tag and never a file path.
     public var note: String
+    /// Local DSP report. Nil means the audio was not measured. Missing on references saved before analysis existed.
+    public var audio: AudioStyleReport?
 
     public init(
         id: String = newID(), kind: Kind, title: String, artistName: String = "", albumTitle: String = "",
         genres: [String] = [], styleTags: String = "", mood: String = "", vocal: String = "", bpm: Int? = nil,
-        isInstrumental: Bool = false, note: String = ""
+        isInstrumental: Bool = false, note: String = "", audio: AudioStyleReport? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -43,6 +44,45 @@ public struct StyleCue: Codable, Sendable, Hashable, Identifiable {
         self.bpm = bpm
         self.isInstrumental = isInstrumental
         self.note = note
+        self.audio = audio
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, title, artistName, albumTitle, genres, styleTags, mood, vocal, bpm, isInstrumental, note, audio
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        kind = try container.decode(Kind.self, forKey: .kind)
+        title = try container.decode(String.self, forKey: .title)
+        artistName = try container.decodeIfPresent(String.self, forKey: .artistName) ?? ""
+        albumTitle = try container.decodeIfPresent(String.self, forKey: .albumTitle) ?? ""
+        genres = try container.decodeIfPresent([String].self, forKey: .genres) ?? []
+        styleTags = try container.decodeIfPresent(String.self, forKey: .styleTags) ?? ""
+        mood = try container.decodeIfPresent(String.self, forKey: .mood) ?? ""
+        vocal = try container.decodeIfPresent(String.self, forKey: .vocal) ?? ""
+        bpm = try container.decodeIfPresent(Int.self, forKey: .bpm)
+        isInstrumental = try container.decodeIfPresent(Bool.self, forKey: .isInstrumental) ?? false
+        note = try container.decodeIfPresent(String.self, forKey: .note) ?? ""
+        audio = try container.decodeIfPresent(AudioStyleReport.self, forKey: .audio)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(title, forKey: .title)
+        try container.encode(artistName, forKey: .artistName)
+        try container.encode(albumTitle, forKey: .albumTitle)
+        try container.encode(genres, forKey: .genres)
+        try container.encode(styleTags, forKey: .styleTags)
+        try container.encode(mood, forKey: .mood)
+        try container.encode(vocal, forKey: .vocal)
+        try container.encodeIfPresent(bpm, forKey: .bpm)
+        try container.encode(isInstrumental, forKey: .isInstrumental)
+        try container.encode(note, forKey: .note)
+        try container.encodeIfPresent(audio, forKey: .audio)
     }
 
     public var kindLabel: String {
@@ -350,12 +390,24 @@ public enum StylePipeline {
                 if !cue.note.isEmpty { bits.append(cue.note) }
                 return "- " + bits.joined(separator: ". ")
             }
+            let measured = usable.compactMap { cue -> String? in
+                guard let audio = cue.audio, audio.status != .unavailable else { return nil }
+                return "- \(cue.kindLabel) \"\(cue.title)\": \(audio.promptSentence(vocalOnly: vocalOnly))"
+            }
             parts.append(
                 """
-                Style reference metadata (not audio): the listener picked these. Use only the names, genres, moods and tags below. \
-                Audio was not uploaded and has not been analyzed. Do not claim you heard the recording.
+                Style reference metadata (not audio): the listener picked these. Names, genres, moods and tags below come from the library or from file tags. \
+                They are not the result of listening. Audio was not uploaded.
                 \(lines.joined(separator: "\n"))
                 """)
+            if !measured.isEmpty {
+                parts.append(
+                    """
+                    Measured audio (decoded and analyzed on this Mac; the recording was not uploaded). \
+                    These are signal measurements and threshold labels. They do not identify instruments, vocals, key, or genre.
+                    \(measured.joined(separator: "\n"))
+                    """)
+            }
         }
         if vocalOnly {
             parts.append(
@@ -386,10 +438,12 @@ public enum StylePipeline {
             extra.append(contentsOf: cue.genres)
             if vocalOnly {
                 if !cue.mood.isEmpty { extra.append(cue.mood) }
+                extra.append(contentsOf: cue.audio?.engineTags(vocalOnly: true) ?? [])
             } else {
                 extra.append(contentsOf: VocalOnly.split(cue.styleTags).prefix(4))
                 if !cue.mood.isEmpty { extra.append(cue.mood) }
                 if cue.isInstrumental && allowInstrumentalCue { extra.append("instrumental") }
+                extra.append(contentsOf: cue.audio?.engineTags(vocalOnly: false) ?? [])
             }
         }
         if vocalOnly { extra = extra.filter { !VocalOnly.namesInstrument($0) } }

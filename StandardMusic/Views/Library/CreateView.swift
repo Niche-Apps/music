@@ -19,6 +19,7 @@ struct CreateView: View {
 
     @State private var prompt = ""
     @State private var references: [StyleReference] = []
+    @State private var analysisProgress: String?
     @State private var count = 4
     @State private var data = Data()
     @State private var likeQuery = ""
@@ -54,7 +55,7 @@ struct CreateView: View {
                 .labelsHidden()
                 .frame(width: 220)
                 .accessibilityLabel("Create mode")
-                if mode == .simple { promptCard } else { CustomSongCard(artists: data.artists, references: $references) }
+                if mode == .simple { promptCard } else { CustomSongCard(artists: data.artists, references: $references, analysisProgress: $analysisProgress) }
                 NewReleaseCard(artists: data.artists)
                 HStack(alignment: .top, spacing: 18) {
                     discoverCard
@@ -96,7 +97,7 @@ struct CreateView: View {
                 .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(promptFocused ? Color.accentColor.opacity(0.6) : .primary.opacity(0.1)))
                 .onSubmit(submitPrompt)
-            StyleReferenceEditor(references: $references)
+            StyleReferenceEditor(references: $references, analysisProgress: $analysisProgress)
             if VocalOnly.requests(prompt) { VocalOnlyNote() }
             FlowLayout(spacing: 8) {
                 ForEach(Self.suggestions, id: \.self) { s in
@@ -136,7 +137,8 @@ struct CreateView: View {
         guard !text.isEmpty || references.contains(where: { $0.promptCue != nil }), !submitting else { return }
         submitting = true
         Task {
-            let resolved = await StyleReferenceRefresh.resolve(references, db: model.services.db)
+            let resolved = await StyleReferenceRefresh.resolve(references, db: model.services.db) { analysisProgress = $0 }
+            analysisProgress = nil
             references = resolved.references
             let brief = text.isEmpty ? "In the vein of the chosen style references." : text
             await model.generateArtists(prompt: brief, count: count, cues: resolved.cues)
@@ -412,6 +414,7 @@ struct CustomSongCard: View {
     @Environment(AppModel.self) private var model
     let artists: [Artist]
     @Binding var references: [StyleReference]
+    @Binding var analysisProgress: String?
     @State private var lyrics = ""
     @State private var style = ""
     @State private var title = ""
@@ -483,7 +486,7 @@ struct CustomSongCard: View {
                         if VocalOnly.requests(new) { instrumental = false }
                     }
                 if VocalOnly.requests(style) { VocalOnlyNote() }
-                StyleReferenceEditor(references: $references)
+                StyleReferenceEditor(references: $references, analysisProgress: $analysisProgress)
                 FlowLayout(spacing: 6) {
                     ForEach(Self.styleChips, id: \.self) { chip in
                         Button("+ \(chip)") { add(chip) }
@@ -548,8 +551,10 @@ struct CustomSongCard: View {
     private func draft() {
         drafting = true
         Task {
-            let cues = references.compactMap(\.promptCue)
-            if let text = await model.draftLyrics(style: style, about: title, cues: cues) { lyrics = text }
+            let resolved = await StyleReferenceRefresh.resolve(references, db: model.services.db) { analysisProgress = $0 }
+            analysisProgress = nil
+            references = resolved.references
+            if let text = await model.draftLyrics(style: style, about: title, cues: resolved.cues) { lyrics = text }
             drafting = false
         }
     }
@@ -563,7 +568,8 @@ struct CustomSongCard: View {
         let instrumentalNow = instrumental
         let performerNow = performer
         Task {
-            let resolved = await StyleReferenceRefresh.resolve(references, db: model.services.db)
+            let resolved = await StyleReferenceRefresh.resolve(references, db: model.services.db) { analysisProgress = $0 }
+            analysisProgress = nil
             references = resolved.references
             let request = CustomSongRequest(
                 lyrics: lyricsNow, style: styleNow, title: titleNow.isEmpty ? nil : titleNow, instrumental: instrumentalNow,

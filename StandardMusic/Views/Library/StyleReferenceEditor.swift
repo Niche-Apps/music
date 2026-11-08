@@ -4,17 +4,31 @@ import StandardKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Keeps the saved picks in step with the library index and with files that may have moved.
+/// Keeps the saved picks in step with the library index, file access, and local audio measurements.
 enum StyleReferenceRefresh {
     @MainActor
     static func resolve(_ references: [StyleReference], db: AppDatabase) async -> (references: [StyleReference], cues: [StyleCue]) {
+        await resolve(references, db: db, progress: { _ in })
+    }
+
+    @MainActor
+    static func resolve(
+        _ references: [StyleReference], db: AppDatabase, progress: @escaping @MainActor (String) -> Void
+    ) async -> (references: [StyleReference], cues: [StyleCue]) {
+        if Task.isCancelled { return (references, references.compactMap(\.promptCue)) }
         let library = (try? StyleReferenceStore.refreshLibrary(references, in: db)) ?? references
         var resolved: [StyleReference] = []
         for reference in library {
             if Task.isCancelled { return (references, references.compactMap(\.promptCue)) }
-            if reference.cue.kind == .file || reference.cue.kind == .folder {
-                resolved.append(await LocalStyleFiles.refresh(reference))
-            } else {
+            do {
+                if reference.cue.kind == .file || reference.cue.kind == .folder {
+                    resolved.append(try await LocalStyleFiles.refresh(reference, progress: progress))
+                } else {
+                    resolved.append(try await LocalStyleFiles.measureLibrary(reference, db: db, progress: progress))
+                }
+            } catch is CancellationError {
+                return (references, references.compactMap(\.promptCue))
+            } catch {
                 resolved.append(reference)
             }
         }
@@ -35,6 +49,7 @@ struct VocalOnlyNote: View {
 struct StyleReferenceEditor: View {
     @Environment(AppModel.self) private var model
     @Binding var references: [StyleReference]
+    @Binding var analysisProgress: String?
     @State private var showsLibrary = false
     @State private var libraryCount = 0
 
@@ -54,9 +69,10 @@ struct StyleReferenceEditor: View {
                     .buttonStyle(.glass)
                     .controlSize(.small)
             }
-            Text("Uses titles, artists, genres, moods and style tags. Audio is not analyzed or uploaded.")
+            Text(analysisProgress ?? AudioStyleAnalyzer.capability)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             if references.isEmpty {
                 Text(libraryCount > 0 ? "Choose an album or song from your library, or a file on this Mac." : "Your library is empty, so import a file or folder. Only the tags in those files are read.")
                     .font(.caption)
@@ -98,6 +114,10 @@ struct StyleReferenceEditor: View {
                 Text(reference.availability == .permissionDenied ? "No access" : "Missing")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.orange)
+            } else if let audio = reference.cue.audio {
+                Text(audio.chipLabel)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(audio.status == .measured ? Color.accentColor : .orange)
             }
             Button {
                 references.removeAll { $0.id == reference.id }
@@ -118,7 +138,8 @@ struct StyleReferenceEditor: View {
     private func importFiles(directories: Bool) {
         guard let urls = LocalStyleFiles.choose(directories: directories) else { return }
         Task {
-            guard let imported = await LocalStyleFiles.references(from: urls, directories: directories) else { return }
+            defer { analysisProgress = nil }
+            guard let imported = await LocalStyleFiles.references(from: urls, directories: directories, progress: { analysisProgress = $0 }) else { return }
             references = StyleReferenceStore.integrate(current: references, panelAccepted: true, imported: imported)
         }
     }
@@ -249,24 +270,24 @@ enum LocalStyleFiles {
         panel.canCreateDirectories = false
         panel.prompt = "Use as Style"
         panel.message = directories
-            ? "Choose a folder. Only titles and tags are read. Audio is not uploaded or analyzed."
-            : "Choose songs. Only titles and tags are read. Audio is not uploaded or analyzed."
+            ? "Choose a folder. Tags are read, and a short sample of the audio is measured on this Mac. Nothing is uploaded."
+            : "Choose songs. Tags are read, and a short sample of the audio is measured on this Mac. Nothing is uploaded."
         if !directories { panel.allowedContentTypes = [.audio] }
         guard panel.runModal() == .OK else { return nil }
         return panel.urls
     }
 
-    static func references(from urls: [URL], directories: Bool) async -> [StyleReference]? {
+    static func references(from urls: [URL], directories: Bool, progress: @escaping @MainActor (String) -> Void) async -> [StyleReference]? {
         var built: [StyleReference] = []
         for url in urls {
             if Task.isCancelled { return nil }
-            guard let reference = await make(url: url, directory: directories || url.hasDirectoryPath) else { return nil }
+            guard let reference = await make(url: url, directory: directories || url.hasDirectoryPath, progress: progress) else { return nil }
             built.append(reference)
         }
         return built
     }
 
-    static func refresh(_ reference: StyleReference) async -> StyleReference {
+    static func refresh(_ reference: StyleReference, progress: @escaping @MainActor (String) -> Void) async throws -> StyleReference {
         guard reference.cue.kind == .file || reference.cue.kind == .folder else { return reference }
         guard let bookmark = reference.bookmark else {
             guard let path = reference.path else {
@@ -279,7 +300,12 @@ enum LocalStyleFiles {
             guard FileManager.default.isReadableFile(atPath: url.path) else {
                 return StyleReferenceStore.applyFileResult(reference, result: .failure(.permissionDenied))
             }
-            return reference
+            if reference.cue.kind == .folder {
+                let files = audioFiles(in: url)
+                return try await applying(reference, urls: files.urls, considered: files.considered, progress: progress)
+            }
+            let label = reference.cue.title.isEmpty ? url.deletingPathExtension().lastPathComponent : reference.cue.title
+            return try await applying(reference, urls: [(label, url)], considered: 1, progress: progress)
         }
         var stale = false
         guard let url = try? URL(
@@ -295,12 +321,81 @@ enum LocalStyleFiles {
         guard FileManager.default.isReadableFile(atPath: url.path) else {
             return StyleReferenceStore.applyFileResult(reference, result: .failure(.permissionDenied))
         }
-        if reference.cue.kind == .folder { return reference }
+        if reference.cue.kind == .folder {
+            let files = audioFiles(in: url)
+            return try await applying(reference, urls: files.urls, considered: files.considered, progress: progress)
+        }
         let meta = await tags(of: url)
-        return StyleReferenceStore.applyFileResult(reference, result: .success(meta))
+        let updated = StyleReferenceStore.applyFileResult(reference, result: .success(meta))
+        let label = updated.cue.title.isEmpty ? url.deletingPathExtension().lastPathComponent : updated.cue.title
+        return try await applying(updated, urls: [(label, url)], considered: 1, progress: progress)
     }
 
-    private static func make(url: URL, directory: Bool) async -> StyleReference? {
+    static func measureLibrary(_ reference: StyleReference, db: AppDatabase, progress: @escaping @MainActor (String) -> Void) async throws -> StyleReference {
+        let files = libraryAudio(reference, db: db)
+        return try await applying(reference, urls: files.urls, considered: files.considered, progress: progress)
+    }
+
+    private static func applying(
+        _ reference: StyleReference, urls: [(String, URL)], considered: Int, progress: @escaping @MainActor (String) -> Void
+    ) async throws -> StyleReference {
+        let report = try await LocalAudioMeasure.measure(urls: urls, considered: considered, cached: reference.cue.audio, progress: progress)
+        var updated = reference
+        updated.cue.audio = report
+        if report.status == .measured || report.status == .silence || report.status == .tooShort {
+            updated.cue.note = "File tags, separate from the audio measurement."
+        }
+        return updated
+    }
+
+    private static func libraryAudio(_ reference: StyleReference, db: AppDatabase) -> (urls: [(String, URL)], considered: Int) {
+        switch reference.cue.kind {
+        case .librarySong:
+            guard let id = reference.libraryID,
+                let track = try? db.reader.read({ try Track.fetchOne($0, key: id) })
+            else { return ([], 0) }
+            guard let path = track.audioPath else { return ([], 0) }
+            let url = Paths.resolve(path)
+            guard FileManager.default.isReadableFile(atPath: url.path) else { return ([], 1) }
+            return ([(track.title, url)], 1)
+        case .libraryAlbum:
+            guard let id = reference.libraryID, let tracks = try? db.tracks(forAlbum: id) else { return ([], 0) }
+            let recorded = tracks.compactMap { track -> (String, URL)? in
+                guard let path = track.audioPath else { return nil }
+                let url = Paths.resolve(path)
+                guard FileManager.default.isReadableFile(atPath: url.path) else { return nil }
+                return (track.title, url)
+            }
+            return (Array(recorded.prefix(AudioStyleAnalyzer.maxTracks)), recorded.count)
+        case .file, .folder:
+            return ([], 0)
+        }
+    }
+
+    private static func audioFiles(in folder: URL) -> (urls: [(String, URL)], considered: Int) {
+        guard let enumerator = FileManager.default.enumerator(
+            at: folder, includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants])
+        else { return ([], 0) }
+        var found: [(String, URL)] = []
+        var extra = 0
+        var seen = 0
+        while let item = enumerator.nextObject() as? URL {
+            seen += 1
+            if seen > AudioStyleAnalyzer.maxDirectoryEntries { break }
+            guard audioExtensions.contains(item.pathExtension.lowercased()) else { continue }
+            let values = try? item.resourceValues(forKeys: [.isRegularFileKey])
+            guard values?.isRegularFile == true else { continue }
+            if found.count < AudioStyleAnalyzer.maxTracks {
+                found.append((item.deletingPathExtension().lastPathComponent, item))
+            } else {
+                extra += 1
+            }
+        }
+        return (found, found.count + extra)
+    }
+
+    private static func make(url: URL, directory: Bool, progress: @escaping @MainActor (String) -> Void) async -> StyleReference? {
         let started = url.startAccessingSecurityScopedResource()
         defer { if started { url.stopAccessingSecurityScopedResource() } }
         guard FileManager.default.fileExists(atPath: url.path) else {
@@ -312,11 +407,11 @@ enum LocalStyleFiles {
         let bookmark = try? url.bookmarkData(
             options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess], includingResourceValuesForKeys: nil, relativeTo: nil)
         if directory {
-            let files = await folderTags(url)
+            let tagged = await folderTags(url)
             if Task.isCancelled { return nil }
             let cue: StyleCue
             do {
-                cue = try StyleFolder.summarize(folderName: url.lastPathComponent, files: files, isCancelled: {
+                cue = try StyleFolder.summarize(folderName: url.lastPathComponent, files: tagged, isCancelled: {
                     if Task.isCancelled { throw CancellationError() }
                 })
             } catch is CancellationError {
@@ -324,14 +419,32 @@ enum LocalStyleFiles {
             } catch {
                 cue = StyleCue(kind: .folder, title: url.lastPathComponent, note: "Couldn’t finish reading this folder")
             }
-            return StyleReference(cue: cue, bookmark: bookmark, path: url.path)
+            var reference = StyleReference(cue: cue, bookmark: bookmark, path: url.path)
+            let audio = audioFiles(in: url)
+            if Task.isCancelled { return nil }
+            do {
+                reference = try await applying(reference, urls: audio.urls, considered: audio.considered, progress: progress)
+            } catch is CancellationError {
+                return nil
+            } catch {
+                return reference
+            }
+            return reference
         }
         let meta = await tags(of: url)
         let cue = StyleCue(
             kind: .file, title: meta.title.isEmpty ? url.deletingPathExtension().lastPathComponent : meta.title,
             artistName: meta.artist, albumTitle: meta.album, genres: meta.genres,
-            note: "File tags only. Audio was not read.")
-        return StyleReference(cue: cue, bookmark: bookmark, path: url.path)
+            note: "File tags, separate from the audio measurement.")
+        var reference = StyleReference(cue: cue, bookmark: bookmark, path: url.path)
+        do {
+            reference = try await applying(reference, urls: [(cue.title, url)], considered: 1, progress: progress)
+        } catch is CancellationError {
+            return nil
+        } catch {
+            return reference
+        }
+        return reference
     }
 
     private static func unavailable(url: URL, directory: Bool, availability: StyleReference.Availability) -> StyleReference {
