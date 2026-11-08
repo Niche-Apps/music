@@ -226,6 +226,21 @@ import Testing
         func blob() -> String {
             requests.compactMap(\.httpBody).map { String(decoding: $0, as: UTF8.self) }.joined(separator: "\n")
         }
+
+        /// Typed as the client’s `@Sendable` transport so the closure is Sendable, same as `MockTransport`.
+        var openRouterTransport: OpenRouterClient.Transport {
+            { [self] request in
+                let (status, data) = take(request)
+                let http = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: [:])!
+                return (data, http)
+            }
+        }
+
+        var chatGPTTransport: ChatGPTClient.ResponseTransport {
+            { [self] request in
+                take(request)
+            }
+        }
     }
 
     func jwt() -> String {
@@ -251,13 +266,10 @@ import Testing
             try JSONEncoder().encode(creds).write(to: directory.appending(path: "chatgpt-auth.json"))
         }
         let auth = ChatGPTAuth(directory: directory)
-        let openRouter: OpenRouterClient.Transport? = provider == .openRouter ? { request in
-            let (status, data) = script.take(request)
-            let http = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
-            return (data, http)
-        } : nil
-        let chatGPT: ChatGPTClient.ResponseTransport? = provider == .chatGPT ? { script.take($0) } : nil
-        let client = ChatGPTClient(auth: auth, openRouterTransport: openRouter, responseTransport: chatGPT)
+        let client = ChatGPTClient(
+            auth: auth,
+            openRouterTransport: provider == .openRouter ? script.openRouterTransport : nil,
+            responseTransport: provider == .chatGPT ? script.chatGPTTransport : nil)
         if provider == .openRouter {
             await client.configureOpenRouter(apiKey: "test-key", writing: "openrouter/free", fast: "openrouter/free", imageModel: nil)
         }
@@ -392,7 +404,7 @@ import Testing
         artist.status = .written
         let batch = GenerationBatch(kind: .prompt, title: "acapella", request: String(decoding: try JSONEncoder().encode(BuildRequest(artistCount: 1, prompt: "acapella folk", styleCues: [cue()])), as: UTF8.self), targetArtists: 1)
         artist.batchID = batch.id
-        try db.writer.write { try batch.insert($0) }
+        try await db.writer.write { try batch.insert($0) }
         try db.save(artist: artist)
         var album = Album(artistID: artist.id, title: "Static Bloom", releaseYear: 2020, kind: .album, primaryGenre: "folk", genres: ["folk"], soul: "Voices.", trackCount: 1)
         album.status = .planned

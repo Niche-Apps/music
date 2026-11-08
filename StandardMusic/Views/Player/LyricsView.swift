@@ -92,9 +92,15 @@ struct LookUpLyricsButton: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            Button("Look Up Lyrics", systemImage: "quote.bubble") { model.lookUpLyrics(info) }
-                .buttonStyle(prominent ? .borderedProminent : .bordered)
-                .help("Shows lyrics saved with this song, or opens a web search for the title and artist.")
+            if prominent {
+                Button("Look Up Lyrics", systemImage: "quote.bubble") { model.lookUpLyrics(info) }
+                    .buttonStyle(.borderedProminent)
+                    .help("Shows lyrics saved with this song, or opens a web search for the title and artist.")
+            } else {
+                Button("Look Up Lyrics", systemImage: "quote.bubble") { model.lookUpLyrics(info) }
+                    .buttonStyle(.bordered)
+                    .help("Shows lyrics saved with this song, or opens a web search for the title and artist.")
+            }
             if LyricsLookup.hasSingableLyrics(info.track.lyrics) {
                 Button("Search the Web for Lyrics…") { model.searchWebForLyrics(info) }
                     .buttonStyle(.borderless)
