@@ -104,3 +104,44 @@ extension AppModel {
         return r.artistWasNew ? "Added \(r.artistName) to your library" : "Added \(albums) by \(r.artistName)"
     }
 }
+
+// MARK: Exporting audio
+
+extension AppModel {
+    /// Copies recorded songs into a folder the listener picks, as `Artist/Album/01 Title.m4a` with tags
+    /// and cover art, for Finder, other players and backups. Empty IDs export the whole library;
+    /// songs already in the folder are skipped, so exporting again only adds what's new.
+    func exportAudio(artistIDs: [ID] = [], albumIDs: [ID] = []) {
+        guard !isExportingAudio else { return flash("An export is already running.") }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.directoryURL = FileManager.default.urls(for: .musicDirectory, in: .userDomainMask).first
+        panel.message = "Songs are saved as Artist › Album › Track, ready for Finder or another player."
+        panel.prompt = "Export"
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+        isExportingAudio = true
+        flash("Exporting songs…")
+        let sharing = services.sharing
+        Task {
+            defer { isExportingAudio = false }
+            do {
+                let result = try await sharing.exportAudio(artistIDs: artistIDs, albumIDs: albumIDs, to: folder)
+                flash(Self.exportSummary(result))
+                if result.exported > 0 { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
+            } catch {
+                flash("Couldn't export: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    static func exportSummary(_ r: AudioExportResult) -> String {
+        func songs(_ n: Int) -> String { n == 1 ? "1 song" : "\(n) songs" }
+        if r.exported == 0 && r.skipped == 0 && r.failed == 0 { return "Nothing recorded to export yet." }
+        var parts = [r.exported == 0 ? "Everything was already exported" : "Exported \(songs(r.exported))"]
+        if r.exported > 0 && r.skipped > 0 { parts.append("\(r.skipped) already there") }
+        if r.failed > 0 { parts.append("\(songs(r.failed)) couldn't be copied") }
+        return parts.joined(separator: " · ") + "."
+    }
+}

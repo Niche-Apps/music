@@ -58,6 +58,7 @@ final class AppModel {
     var pendingImport: PendingImport?
     /// Share files opened before the library was ready (e.g. double-clicked to launch the app).
     var queuedShareFiles: [URL] = []
+    var isExportingAudio = false
     private(set) var credentials: ChatGPTCredentials?
     private(set) var buildStatus = BuildStatus.idle
     private(set) var modelState: ModelState = .unknown

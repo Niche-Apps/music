@@ -27,6 +27,8 @@ struct AppCommands: Commands {
             Button("Import Shared Album…") { AppActions.importShare(model, openWindow: openWindow) }
                 .keyboardShortcut("o")
                 .disabled(!inLibrary)
+            Button("Export Music…") { model.exportAudio() }
+                .disabled(!inLibrary || model.isExportingAudio)
         }
 
         CommandMenu("Controls") {

@@ -156,6 +156,7 @@ struct AlbumMenuItems: View {
         }
         Divider()
         Button("Share Album…", systemImage: "square.and.arrow.up") { model.share(album: info) }
+        Button("Export Songs…", systemImage: "folder") { model.exportAudio(albumIDs: [info.album.id]) }
         Button("Copy", systemImage: "doc.on.doc") { model.copy("\(info.album.title) — \(info.artist.name)") }
     }
 }
@@ -175,6 +176,7 @@ struct ArtistMenuItems: View {
             .disabled(library.releasing.contains(artist.id))
         Divider()
         Button("Share Artist…", systemImage: "square.and.arrow.up") { model.share(artist: artist) }
+        Button("Export Songs…", systemImage: "folder") { model.exportAudio(artistIDs: [artist.id]) }
         Button("Copy Name", systemImage: "doc.on.doc") { model.copy(artist.name) }
     }
 }
