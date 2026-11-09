@@ -28,11 +28,12 @@ import Testing
 
 @Suite struct OpenRouterTransportTests {
     final class Script: @unchecked Sendable {
+        typealias Response = (Int, String, String?)
         let lock = NSLock()
-        var responses: [(Int, String, String?)]
+        var responses: [Response]
         var requests: [URLRequest] = []
         var timeouts = 0
-        init(_ responses: [(Int, String, String?)]) { self.responses = responses }
+        init(_ responses: [Response]) { self.responses = responses }
         func take(_ request: URLRequest) throws -> (Data, HTTPURLResponse) {
             lock.lock()
             requests.append(request)
@@ -43,7 +44,7 @@ import Testing
             }
             let next = responses.isEmpty ? nil : responses.removeFirst()
             lock.unlock()
-            let (status, body, retry) = next ?? (500, "{}", nil)
+            let (status, body, retry) = next ?? (500, "{}", nil as String?)
             var headers: [String: String] = [:]
             if let retry { headers["Retry-After"] = retry }
             let http = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: headers)!
@@ -67,7 +68,7 @@ import Testing
     @Test func retries429UsingRetryAfterThenSucceeds() async throws {
         let script = Script([
             (429, #"{"error":{"message":"slow down"}}"#, "2"),
-            (200, chat(#"{"name":"A","age":1}"#), nil),
+            (200, chat(#"{"name":"A","age":1}"#), nil as String?),
         ])
         let clock = ManualClock()
         let (client, _) = client(script, model: "vendor/paid", clock: clock)
@@ -79,7 +80,7 @@ import Testing
     }
 
     @Test func free429WalksTheFreeChainAndStopsBeforeAPaidModel() async {
-        let limit = (429, #"{"error":{"message":"rate"}}"#, "0")
+        let limit: Script.Response = (429, #"{"error":{"message":"rate"}}"#, "0")
         let script = Script(Array(repeating: limit, count: OpenRouterFreeChain.builtIn.count * OpenRouterFreeChain.maxAttemptsPerModel))
         let (client, clock) = client(script)
         await #expect {
@@ -97,9 +98,9 @@ import Testing
     }
 
     @Test func paidFallbackRunsOnlyAfterFreeModelsAreRateLimited() async throws {
-        let limit = (429, #"{"error":{"message":"rate"}}"#, "1")
+        let limit: Script.Response = (429, #"{"error":{"message":"rate"}}"#, "1")
         var responses = Array(repeating: limit, count: OpenRouterFreeChain.builtIn.count * OpenRouterFreeChain.maxAttemptsPerModel)
-        responses.append((200, chat(#"{"name":"Z","age":9}"#), nil))
+        responses.append((200, chat(#"{"name":"Z","age":9}"#), nil as String?))
         let script = Script(responses)
         let paid = OpenRouterPaidFallback(enabled: true, modelID: "openai/gpt-4o-mini")
         let (client, _) = client(script, paid: paid)
@@ -110,7 +111,7 @@ import Testing
     }
 
     @Test func timeoutIsBoundedAndTriesTheNextFreeModel() async throws {
-        let script = Script([(200, chat(#"{"name":"Rex","age":4}"#), nil)])
+        let script = Script([(200, chat(#"{"name":"Rex","age":4}"#), nil as String?)])
         script.timeouts = OpenRouterFreeChain.maxAttemptsPerModel
         let (client, _) = client(script)
         let data = try await client.json(schemaName: "pet", schema: petSchema, instructions: "", prompt: "", model: "openrouter/free")
@@ -134,7 +135,7 @@ import Testing
 
     @Test func nullContentUsesReasoningOnce() async throws {
         let body = #"{"choices":[{"message":{"content":null,"reasoning":"note {\"name\":\"R\",\"age\":2}"}}]}"#
-        let script = Script([(200, body, nil)])
+        let script = Script([(200, body, nil as String?)])
         let (client, _) = client(script, model: "vendor/paid")
         let data = try await client.json(schemaName: "pet", schema: petSchema, instructions: "", prompt: "", model: "vendor/paid")
         #expect(try JSONDecoder().decode(Pet.self, from: data).name == "R")
@@ -146,7 +147,8 @@ import Testing
 
     @Test func reasoningWithoutJSONDoesNotLoop() async {
         let body = #"{"choices":[{"message":{"content":null,"reasoning":"still thinking"}}]}"#
-        let script = Script([(200, body, nil), (200, body, nil), (200, body, nil), (200, body, nil)])
+        let row: Script.Response = (200, body, nil as String?)
+        let script = Script([row, row, row, row])
         let (client, _) = client(script, model: "vendor/paid")
         await #expect(throws: ChatGPTError.self) {
             _ = try await client.json(schemaName: "pet", schema: petSchema, instructions: "", prompt: "", model: "vendor/paid")
@@ -169,7 +171,7 @@ import Testing
     @Test func waitingIsReportedInsteadOfStayingSilent() async throws {
         let script = Script([
             (429, #"{"error":{"message":"slow down"}}"#, "2"),
-            (200, chat(#"{"name":"A","age":1}"#), nil),
+            (200, chat(#"{"name":"A","age":1}"#), nil as String?),
         ])
         let (client, _) = client(script, model: "vendor/paid")
         let log = StatusLog()
@@ -305,11 +307,11 @@ private func openRouterClient(_ script: EnrichmentScript) async throws -> ChatGP
         let root = FileManager.default.temporaryDirectory.appending(path: "key-\(UUID())", directoryHint: .isDirectory)
         let saved = OpenRouterKey.persist("sk-or-test", keychainWrite: { _ in errSecMissingEntitlement }, keychainDelete: { errSecSuccess }, root: root)
         #expect(saved)
-        let loaded = OpenRouterKey.resolveStored(keychainRead: { (errSecItemNotFound, nil) }, root: root)
+        let loaded = OpenRouterKey.resolveStored(keychainRead: { (errSecItemNotFound, nil as String?) }, root: root)
         #expect(loaded == "sk-or-test")
         let cleared = OpenRouterKey.persist("", keychainWrite: { _ in errSecSuccess }, keychainDelete: { errSecSuccess }, root: root)
         #expect(cleared)
-        #expect(OpenRouterKey.resolveStored(keychainRead: { (errSecItemNotFound, nil) }, root: root) == nil)
+        #expect(OpenRouterKey.resolveStored(keychainRead: { (errSecItemNotFound, nil as String?) }, root: root) == nil)
         #expect(OpenRouterKey.persist("sk-or-live", keychainWrite: { _ in errSecSuccess }, keychainDelete: { errSecSuccess }, root: root))
         #expect(OpenRouterKey.resolveStored(keychainRead: { (errSecSuccess, "sk-or-live") }, root: root) == "sk-or-live")
     }
