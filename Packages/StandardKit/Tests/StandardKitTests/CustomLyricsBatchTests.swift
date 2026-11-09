@@ -271,14 +271,25 @@ import Testing
             #expect(!text.contains("It's an instrumental."))
             #expect(!text.contains(Self.bookmarkSecret))
             #expect(!text.contains("BEGIN_PATH_SECRET"))
-            #expect(!text.contains(OpenRouterCatalog.cheapBackupModel))
+            #expect(!text.contains("gemini-2.5-flash-lite"))
         }
         if provider == .openRouter {
-            #expect(script.requests.allSatisfy { request in
-                let text = String(decoding: request.httpBody ?? Data(), as: UTF8.self)
-                return text.contains("openrouter/free") && !text.contains("modalities")
-                    && request.url?.absoluteString.contains("chat/completions") == true
-            })
+            // JSONEncoder writes the model as "openrouter\/free", so a raw substring search for
+            // "openrouter/free" misses the field the client actually sent. Decode it. This batch
+            // is configured for that free router and procedural artwork: every call stays on
+            // chat/completions, that model, and no image modalities.
+            #expect(script.requests.count == texts.count)
+            #expect(script.requests.count == 2)
+            for request in script.requests {
+                let raw = try #require(request.httpBody)
+                let body = try #require(try JSONSerialization.jsonObject(with: raw) as? [String: Any])
+                let model = try #require(body["model"] as? String)
+                #expect(model == OpenRouterCatalog.defaultModel)
+                #expect(CustomLyricsBatchPlanner.isFreeOpenRouterModel(model))
+                #expect(model != OpenRouterCatalog.cheapBackupModel)
+                #expect(body["modalities"] == nil)
+                #expect(request.url?.path.hasSuffix("chat/completions") == true)
+            }
         } else {
             #expect(texts.allSatisfy { !$0.contains("openrouter/free") })
             #expect(script.requests.contains { $0.url?.path.contains("responses") == true })
