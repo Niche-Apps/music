@@ -76,7 +76,7 @@ import Testing
             requests.append(request)
             armStop?()
             if let failAt, requests.count == failAt {
-                return (403, #"{"error":{"message":"no"}}"#)
+                return (403, Data(#"{"error":{"message":"no"}}"#.utf8))
             }
             let body = bodies.isEmpty ? "{}" : bodies.removeFirst()
             return (200, Data(body.utf8))
@@ -284,25 +284,27 @@ import Testing
             #expect(script.requests.contains { $0.url?.path.contains("responses") == true })
             #expect(script.requests.contains { $0.url?.path.contains("images") == true })
         }
-        let albums = try db.reader.read { try Album.fetchAll($0) }
+        let albums = try await db.reader.read { try Album.fetchAll($0) }
         #expect(albums.count == 2)
         #expect(Set(albums.compactMap(\.batchID)) == [result.batchID])
         let info = try #require(try db.albumInfo(albums[0].id))
         #expect(info.album.batchID == result.batchID)
         #expect(info.artist.batchID == nil)
-        let batch = try #require(try db.reader.read { try GenerationBatch.fetchOne($0, key: result.batchID) })
+        let storedBatch = try await db.reader.read { try GenerationBatch.fetchOne($0, key: result.batchID) }
+        let batch = try #require(storedBatch)
         #expect(batch.kind == .customLyrics)
         #expect(batch.status == .finished)
         #expect(batch.request.contains("Only these words remain"))
         #expect(batch.request.contains(north.id) && batch.request.contains(south.id))
         #expect(!batch.request.contains(Self.bookmarkSecret))
         #expect(!batch.request.contains("BEGIN_PATH_SECRET"))
-        let tracks = try db.reader.read { try Track.fetchAll($0) }
+        let tracks = try await db.reader.read { try Track.fetchAll($0) }
         #expect(tracks.count == 2)
         #expect(Set(tracks.map(\.artistID)) == [north.id, south.id])
-        let lyricWords = Set(tracks.map { $0.lyrics?.lowercased().filter { $0.isLetter } })
-        #expect(lyricWords.count == 1)
-        #expect(lyricWords.first?.contains("onlythesewordsremain") == true)
+        let lyricWords = tracks.map { ($0.lyrics ?? "").lowercased().filter { $0.isLetter } }
+        #expect(Set(lyricWords).count == 1)
+        #expect(lyricWords.count == 2)
+        #expect(lyricWords.allSatisfy { $0.contains("onlythesewordsremain") })
         for track in tracks {
             #expect(track.vocalOnly)
             #expect(!track.isInstrumental)
@@ -313,7 +315,8 @@ import Testing
             #expect(!track.styleCues.contains(Self.bookmarkSecret))
             #expect(!track.styleCues.contains("BEGIN_PATH_SECRET"))
             #expect(track.styleCues.contains("Static Bloom"))
-            let artist = try #require(try db.reader.read { try Artist.fetchOne($0, key: track.artistID) })
+            let storedArtist = try await db.reader.read { try Artist.fetchOne($0, key: track.artistID) }
+            let artist = try #require(storedArtist)
             let album = try #require(albums.first { $0.id == track.albumID })
             let genres = album.primaryGenre.isEmpty || album.primaryGenre == artist.primaryGenre
                 ? [artist.primaryGenre] + artist.genres : [album.primaryGenre] + album.genres
@@ -352,9 +355,9 @@ import Testing
         #expect(texts.allSatisfy { $0.contains("Vocal-only constraint") && !$0.contains("It's an instrumental.") })
         let ids = Set(result.successes.compactMap(\.artistID))
         #expect(ids.count == 2)
-        let albums = try db.reader.read { try Album.fetchAll($0) }
+        let albums = try await db.reader.read { try Album.fetchAll($0) }
         #expect(Set(albums.compactMap(\.batchID)) == [result.batchID])
-        let tracks = try db.reader.read { try Track.fetchAll($0) }
+        let tracks = try await db.reader.read { try Track.fetchAll($0) }
         #expect(tracks.count == 2)
         for track in tracks {
             #expect(track.vocalOnly)
@@ -385,9 +388,11 @@ import Testing
         #expect(result.failures.map(\.artistName) == ["South Room"])
         #expect(result.failures.first?.error?.contains("403") == true)
         #expect(!result.cancelled)
-        let batch = try #require(try db.reader.read { try GenerationBatch.fetchOne($0, key: result.batchID) })
+        let storedBatch = try await db.reader.read { try GenerationBatch.fetchOne($0, key: result.batchID) }
+        let batch = try #require(storedBatch)
         #expect(batch.status == .finished)
-        #expect(try db.reader.read { try Album.fetchCount($0) } == 1)
+        let albumCount = try await db.reader.read { try Album.fetchCount($0) }
+        #expect(albumCount == 1)
     }
 
     @Test(arguments: [AIProvider.chatGPT, AIProvider.openRouter])
@@ -405,9 +410,11 @@ import Testing
         #expect(result.cancelled)
         #expect(result.successes.map(\.artistName) == ["North Room"])
         #expect(!script.blob().contains("SOUL_SOUTH"))
-        let batch = try #require(try db.reader.read { try GenerationBatch.fetchOne($0, key: result.batchID) })
+        let storedBatch = try await db.reader.read { try GenerationBatch.fetchOne($0, key: result.batchID) }
+        let batch = try #require(storedBatch)
         #expect(batch.status == .cancelled)
-        #expect(try db.reader.read { try Album.fetchCount($0) } == 1)
+        let albumCount = try await db.reader.read { try Album.fetchCount($0) }
+        #expect(albumCount == 1)
     }
 
     @Test(arguments: [AIProvider.chatGPT, AIProvider.openRouter])
@@ -444,7 +451,7 @@ import Testing
         #expect(refused.successes.isEmpty)
         #expect(refused.songs.first?.error?.contains("24") == true)
         #expect(script.requests.isEmpty)
-        let statuses = try db.reader.read { try GenerationBatch.fetchAll($0).map(\.status) }
+        let statuses = try await db.reader.read { try GenerationBatch.fetchAll($0).map(\.status) }
         #expect(statuses.count == 2)
         #expect(statuses.allSatisfy { $0 == .failed })
     }
