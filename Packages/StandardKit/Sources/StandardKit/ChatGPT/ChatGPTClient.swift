@@ -16,6 +16,8 @@ public enum ChatGPTError: Error, LocalizedError, Sendable {
     case rateLimited(retryAfter: TimeInterval?, message: String)
     case failed(String)
     case malformed(String)
+    /// Bounded OpenRouter retries are used up. Not retried again, and not a reason to wait forever.
+    case exhausted(String)
 
     public var errorDescription: String? {
         switch self {
@@ -30,6 +32,7 @@ public enum ChatGPTError: Error, LocalizedError, Sendable {
         case .rateLimited(_, let message): message
         case .failed(let m): m
         case .malformed(let m): "Unexpected response: \(m)"
+        case .exhausted(let m): m
         }
     }
 
@@ -37,6 +40,7 @@ public enum ChatGPTError: Error, LocalizedError, Sendable {
         switch self {
         case .rateLimited, .failed, .malformed: true
         case .http(let code, _): code >= 500 || code == 408
+        case .exhausted: false
         default: false
         }
     }
@@ -78,13 +82,19 @@ public actor ChatGPTClient {
     private var openRouter: OpenRouterClient?
     private var openRouterImageModel: String?
     private let openRouterTransport: OpenRouterClient.Transport?
+    private let openRouterClock: any OpenRouterClock
+    private var openRouterActivity: (@Sendable (LibraryWorkStatus) -> Void)?
     /// Test double for the ChatGPT HTTPS calls. Production leaves this nil and uses `URLSession`.
     public typealias ResponseTransport = @Sendable (URLRequest) async throws -> (Int, Data)
     private let responseTransport: ResponseTransport?
 
-    public init(auth: ChatGPTAuth, openRouterTransport: OpenRouterClient.Transport? = nil, responseTransport: ResponseTransport? = nil) {
+    public init(
+        auth: ChatGPTAuth, openRouterTransport: OpenRouterClient.Transport? = nil,
+        responseTransport: ResponseTransport? = nil, openRouterClock: any OpenRouterClock = SystemOpenRouterClock()
+    ) {
         self.auth = auth
         self.openRouterTransport = openRouterTransport
+        self.openRouterClock = openRouterClock
         self.responseTransport = responseTransport
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 180
@@ -99,13 +109,27 @@ public actor ChatGPTClient {
 
     /// Switches generation to OpenRouter with any model slugs. `imageModel == nil` means procedural
     /// artwork only ($0 image spend). An empty key leaves the client not ready.
-    public func configureOpenRouter(apiKey: String, writing: String, fast: String, imageModel: String?) {
+    public func configureOpenRouter(
+        apiKey: String, writing: String, fast: String, imageModel: String?,
+        paidFallback: OpenRouterPaidFallback = .off
+    ) async {
         provider = .openRouter
         let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        openRouter = key.isEmpty ? nil : OpenRouterClient(apiKey: key, transport: openRouterTransport)
+        let client = key.isEmpty ? nil : OpenRouterClient(
+            apiKey: key, transport: openRouterTransport, clock: openRouterClock, paidFallback: paidFallback)
+        if let client, let openRouterActivity {
+            await client.setActivityHandler(openRouterActivity)
+        }
+        openRouter = client
         writingModel = OpenRouterCatalog.normalizedModelID(writing) ?? OpenRouterCatalog.defaultModel
         fastModel = OpenRouterCatalog.normalizedModelID(fast) ?? writingModel
         openRouterImageModel = imageModel.flatMap(OpenRouterCatalog.normalizedModelID)
+    }
+
+    /// Forwards free-tier waits and final failures. The handler is not the library-build status.
+    public func setOpenRouterActivityHandler(_ handler: (@Sendable (LibraryWorkStatus) -> Void)?) async {
+        openRouterActivity = handler
+        await openRouter?.setActivityHandler(handler)
     }
 
     public func useChatGPT() {

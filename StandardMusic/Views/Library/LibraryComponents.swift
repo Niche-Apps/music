@@ -375,6 +375,43 @@ struct LibraryEmptyView: View {
     }
 }
 
+/// Playlist pass and free-tier waits. Hidden when nothing is running and nothing has failed.
+struct LibraryWorkBanner: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let status = model.libraryWork
+        let notice = model.openRouterNotice
+        if status.phase == .working || status.phase == .waiting || status.phase == .failed || notice != nil {
+            HStack(spacing: 14) {
+                Image(systemName: status.phase == .failed ? "exclamationmark.triangle.fill" : "music.note.list")
+                    .foregroundStyle(status.phase == .failed ? Color.orange : Color.accentColor)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(status.phase == .idle ? "OpenRouter" : status.progressLabel)
+                        .font(.system(size: 13.5, weight: .semibold))
+                    Text(notice ?? status.detail)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                    if status.total > 0 {
+                        ProgressView(value: Double(status.completed), total: Double(status.total))
+                            .controlSize(.small)
+                            .frame(maxWidth: 360)
+                            .accessibilityLabel("Playlist progress")
+                            .accessibilityValue("\(status.completed) of \(status.total)")
+                    }
+                }
+                Spacer(minLength: 12)
+            }
+            .padding(16)
+            .background(LegibilityScrim(shape: RoundedRectangle(cornerRadius: 16), color: Color(nsColor: .windowBackgroundColor), opacity: 1))
+            .glassEffect(.regular, in: .rect(cornerRadius: 16))
+            .accessibilityElement(children: .combine)
+        }
+    }
+}
+
 /// Shown above library pages while new artists are still being written.
 struct LibraryBuildingBanner: View {
     @Environment(AppModel.self) private var model

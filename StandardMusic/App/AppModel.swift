@@ -60,6 +60,12 @@ final class AppModel {
     var queuedShareFiles: [URL] = []
     private(set) var credentials: ChatGPTCredentials?
     private(set) var buildStatus = BuildStatus.idle
+    /// Playlist pass over the library, plus any free-tier wait the OpenRouter client reports.
+    var libraryWork = LibraryWorkStatus.idle
+    var openRouterNotice: String?
+    private var openRouterEvents: AsyncStream<LibraryWorkStatus>.Continuation?
+    private var openRouterWatch: Task<Void, Never>?
+    private static let libraryStampKey = "libraryFileStamps"
     private(set) var modelState: ModelState = .unknown
     private(set) var usage = ChatGPTUsage()
     private(set) var taste = TasteProfile()
@@ -202,11 +208,16 @@ final class AppModel {
     func configureClient() async {
         let d = UserDefaults.standard
         if provider == .openRouter {
+            let paid = OpenRouterPaidFallback(
+                enabled: d.bool(forKey: Pref.openRouterPaidFallback),
+                modelID: d.string(forKey: Pref.openRouterPaidFallbackModel) ?? "")
             await services.client.configureOpenRouter(
                 apiKey: OpenRouterKey.current ?? "",
                 writing: d.string(forKey: Pref.openRouterWritingModel) ?? OpenRouterCatalog.defaultModel,
                 fast: d.string(forKey: Pref.openRouterFastModel) ?? OpenRouterCatalog.defaultModel,
-                imageModel: d.string(forKey: Pref.openRouterImageModel).flatMap { $0.isEmpty ? nil : $0 })
+                imageModel: d.string(forKey: Pref.openRouterImageModel).flatMap { $0.isEmpty ? nil : $0 },
+                paidFallback: paid)
+            await installOpenRouterWatch()
             let cached = OpenRouterCatalog.cached(at: Paths.openRouterCatalog)
             if !cached.isEmpty { await services.client.noteOpenRouterCatalog(cached) }
         } else {
@@ -216,6 +227,66 @@ final class AppModel {
                 fast: d.string(forKey: Pref.fastModel) ?? ChatGPTClient.defaultFastModel)
         }
         isAIReady = await services.client.isReady
+    }
+
+    private func installOpenRouterWatch() async {
+        if openRouterEvents == nil {
+            let (stream, continuation) = AsyncStream.makeStream(of: LibraryWorkStatus.self)
+            openRouterEvents = continuation
+            openRouterWatch = Task { @MainActor in
+                for await status in stream {
+                    switch status.phase {
+                    case .waiting, .failed: self.openRouterNotice = status.detail
+                    case .idle, .working, .finished: self.openRouterNotice = nil
+                    }
+                }
+            }
+        }
+        if let openRouterEvents {
+            await services.client.setOpenRouterActivityHandler { openRouterEvents.yield($0) }
+        }
+    }
+
+    /// Groups albums into playlists. Unchanged audio files are skipped. One failed album does not cancel the rest.
+    func organizePlaylists() async {
+        guard libraryWork.phase != .working, libraryWork.phase != .waiting else { return }
+        let infos = (try? await services.db.reader.read { try AppDatabase.trackInfos().fetchAll($0) }) ?? []
+        let tracks = infos.map {
+            EnrichmentTrack(id: $0.id, albumID: $0.album.id, albumTitle: $0.album.title, title: $0.track.title, artistName: $0.artist.name)
+        }
+        let previous = services.db.value([LibraryFileStamp].self, forKey: Self.libraryStampKey) ?? []
+        var current: [LibraryFileStamp] = []
+        for info in infos {
+            if let path = info.track.audioPath, let stamp = LibraryScan.stamp(key: info.id, url: Paths.resolve(path)) {
+                current.append(stamp)
+            } else {
+                current.append(LibraryFileStamp(key: info.id, byteCount: 0, modifiedAt: 0))
+            }
+        }
+        let include = LibraryScan.needsWork(current: current, previous: previous)
+        libraryWork = LibraryWorkStatus(phase: .working, step: "Playlists", completed: 0, total: include.count, detail: "Checking the library")
+        let (stream, continuation) = AsyncStream.makeStream(of: LibraryWorkStatus.self)
+        let updates = Task { @MainActor in
+            for await status in stream { self.libraryWork = status }
+        }
+        let result = await LibraryEnrichment.enrich(tracks, include: include, client: services.client) { continuation.yield($0) }
+        continuation.finish()
+        await updates.value
+        if !result.enrichedIDs.isEmpty {
+            let done = Set(result.enrichedIDs)
+            var saved = Dictionary(previous.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
+            for stamp in current where done.contains(stamp.key) { saved[stamp.key] = stamp }
+            try? services.db.setValue(Array(saved.values), forKey: Self.libraryStampKey)
+        }
+        if !result.playlists.isEmpty {
+            try? LibraryEnrichment.store(result.playlists, db: services.db)
+            toast = "Added \(result.playlists.count) playlist\(result.playlists.count == 1 ? "" : "s")."
+        } else if result.failed == 0 && result.completed == 0 {
+            toast = "Library files are unchanged."
+        } else if result.failed == 0 {
+            toast = "No new playlists."
+        }
+        if result.failed == 0 { libraryWork = .idle }
     }
 
     /// Switches to OpenRouter. A non-empty `apiKey` is saved to the Keychain; an empty one keeps the stored

@@ -67,8 +67,7 @@ public enum CustomLyricsBatchPlanner {
     }
 
     public static func isFreeOpenRouterModel(_ model: String) -> Bool {
-        let id = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return id == OpenRouterCatalog.defaultModel || id.hasSuffix(":free")
+        OpenRouterCatalog.isFreeModel(model)
     }
 }
 

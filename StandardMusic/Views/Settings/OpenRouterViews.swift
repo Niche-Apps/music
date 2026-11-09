@@ -95,6 +95,8 @@ struct OpenRouterAccountSection: View {
     @AppStorage(Pref.openRouterWritingModel) private var writingModel = OpenRouterCatalog.defaultModel
     @AppStorage(Pref.openRouterFastModel) private var fastModel = OpenRouterCatalog.defaultModel
     @AppStorage(Pref.openRouterImageModel) private var imageModel = ""
+    @AppStorage(Pref.openRouterPaidFallback) private var paidFallback = false
+    @AppStorage(Pref.openRouterPaidFallbackModel) private var paidFallbackModel = ""
     @State private var keyField = ""
     @State private var status: String?
     @State private var testing = false
@@ -106,6 +108,9 @@ struct OpenRouterAccountSection: View {
             HStack {
                 if hasStoredKey {
                     Label("Key saved in Keychain", systemImage: "key.fill").foregroundStyle(.secondary)
+                } else if OpenRouterKey.fileFallbackIsPresent {
+                    Label("Key saved on this Mac. Keychain isn’t available to this ad-hoc signature.", systemImage: "externaldrive")
+                        .foregroundStyle(.secondary)
                 } else if OpenRouterKey.environmentKeyAvailable {
                     Label("Using OPENROUTER_API_KEY from the environment", systemImage: "terminal").foregroundStyle(.secondary)
                 } else {
@@ -153,7 +158,21 @@ struct OpenRouterAccountSection: View {
             Text("If an image model fails or isn’t set, Standard Music draws artwork locally so albums never stall.")
                 .settingsFooter()
         }
+        Section {
+            Toggle("Paid last resort", isOn: $paidFallback)
+            TextField("Paid model ID", text: $paidFallbackModel)
+                .textFieldStyle(.roundedBorder)
+                .font(.callout.monospaced())
+                .disabled(!paidFallback)
+        } header: {
+            Text("After free models fail")
+        } footer: {
+            Text("Free requests try openrouter/free and other :free models. \(OpenRouterPaidFallback.weeklyCapNote)")
+                .settingsFooter()
+        }
         .onChange(of: writingModel) { _, _ in Task { await model.configureClient() } }
+        .onChange(of: paidFallback) { _, _ in Task { await model.configureClient() } }
+        .onChange(of: paidFallbackModel) { _, _ in Task { await model.configureClient() } }
         .onChange(of: fastModel) { _, _ in Task { await model.configureClient() } }
         .onChange(of: imageModel) { _, _ in Task { await model.configureClient() } }
     }

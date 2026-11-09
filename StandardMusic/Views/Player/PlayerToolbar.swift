@@ -19,6 +19,10 @@ struct PlayerToolbar: ToolbarContent {
         }
         .sharedBackgroundVisibility(.hidden)
         ToolbarItem(placement: .primaryAction) {
+            LibraryWorkToolbarItem().environment(model)
+        }
+        .sharedBackgroundVisibility(.hidden)
+        ToolbarItem(placement: .primaryAction) {
             VolumeControl().environment(model).environment(library)
         }
         .sharedBackgroundVisibility(.hidden)
@@ -58,6 +62,30 @@ struct PlayerTransport: View {
         .buttonStyle(.plain)
         .padding(.horizontal, 14)
         .playerPanel()
+    }
+}
+
+struct LibraryWorkToolbarItem: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let status = model.libraryWork
+        let notice = model.openRouterNotice
+        if status.phase == .working || status.phase == .waiting || status.phase == .failed || notice != nil {
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(status.phase == .idle ? "OpenRouter" : status.progressLabel)
+                    .font(.system(size: 11, weight: .semibold))
+                    .lineLimit(1)
+                Text(notice ?? status.detail)
+                    .font(.system(size: 10))
+                    .foregroundStyle(status.phase == .failed ? Color.orange : .secondary)
+                    .lineLimit(1)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(status.phase == .failed ? "Playlist pass failed" : status.progressLabel)
+            .accessibilityValue(notice ?? status.detail)
+            .help(notice ?? status.detail)
+        }
     }
 }
 

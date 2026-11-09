@@ -104,6 +104,8 @@ let petSchema: JSON = Schema.object(["name": ["type": "string"], "age": ["type":
         let body = mock.bodies()[0]
         #expect(body["model"] as? String == "openrouter/free")
         #expect((body["response_format"] as? [String: Any])?["type"] as? String == "json_schema")
+        #expect((body["reasoning"] as? [String: Any])?["effort"] as? String == "low")
+        #expect(req.timeoutInterval == OpenRouterFreeChain.requestTimeout)
     }
 
     @Test func fallsBackWhenSchemaRejected() async throws {
@@ -112,7 +114,7 @@ let petSchema: JSON = Schema.object(["name": ["type": "string"], "age": ["type":
                 (status, #"{"error":{"message":"No endpoints found that can handle the requested parameters.","code":\#(status)}}"#),
                 (200, chat("<think>ok</think>```json\n{\"name\":\"Ada\",\"age\":7}\n```")),
             ])
-            let client = OpenRouterClient(apiKey: "k", transport: mock.transport)
+            let client = OpenRouterClient(apiKey: "k", transport: mock.transport, clock: ManualClock())
             let data = try await client.json(schemaName: "pet", schema: petSchema, instructions: "i", prompt: "p", model: "deepseek/deepseek-r1:free")
             #expect(try JSONDecoder().decode(Pet.self, from: data) == Pet(name: "Ada", age: 7))
             let bodies = mock.bodies()
@@ -134,15 +136,18 @@ let petSchema: JSON = Schema.object(["name": ["type": "string"], "age": ["type":
         #expect(mock.bodies()[0]["response_format"] == nil)
     }
 
-    @Test func rateLimitMapsToRetryable() async {
-        let mock = MockTransport([(429, #"{"error":{"message":"Rate limit exceeded: free-models-per-min","code":429}}"#)])
-        let client = OpenRouterClient(apiKey: "k", transport: mock.transport)
+    @Test func rateLimitIsBoundedAndStillReported() async {
+        let limit = (429, #"{"error":{"message":"Rate limit exceeded: free-models-per-min","code":429}}"#)
+        let mock = MockTransport([limit, limit, limit])
+        let client = OpenRouterClient(apiKey: "k", transport: mock.transport, clock: ManualClock())
+        // A paid slug does not walk the free chain; this checks the per-model bound.
         await #expect {
-            _ = try await client.json(schemaName: "p", schema: petSchema, instructions: "", prompt: "", model: "x/y:free")
+            _ = try await client.json(schemaName: "p", schema: petSchema, instructions: "", prompt: "", model: "vendor/paid")
         } throws: { error in
             if case ChatGPTError.rateLimited = error { return true }
             return false
         }
+        #expect(mock.requests.count == OpenRouterFreeChain.maxAttemptsPerModel)
     }
 
     @Test func errorPayloadInside200() async {
