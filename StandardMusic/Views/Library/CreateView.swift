@@ -18,6 +18,8 @@ struct CreateView: View {
     }
 
     @State private var prompt = ""
+    @State private var references: [StyleReference] = []
+    @State private var analysisProgress: String?
     @State private var count = 4
     @State private var data = Data()
     @State private var likeQuery = ""
@@ -53,7 +55,7 @@ struct CreateView: View {
                 .labelsHidden()
                 .frame(width: 220)
                 .accessibilityLabel("Create mode")
-                if mode == .simple { promptCard } else { CustomSongCard(artists: data.artists) }
+                if mode == .simple { promptCard } else { CustomSongCard(artists: data.artists, references: $references, analysisProgress: $analysisProgress) }
                 NewReleaseCard(artists: data.artists)
                 HStack(alignment: .top, spacing: 18) {
                     discoverCard
@@ -65,6 +67,10 @@ struct CreateView: View {
             .frame(maxWidth: 980, alignment: .leading)
         }
         .navigationTitle("Create")
+        .task { references = StyleReferenceStore.load(model.services.db) }
+        .onChange(of: references) { _, updated in
+            try? StyleReferenceStore.save(model.services.db, updated)
+        }
         .observing(model.services.db) { db in
             let batches = try GenerationBatch.order(Column("createdAt").desc).limit(20).fetchAll(db)
             let ids = batches.map(\.id)
@@ -91,6 +97,8 @@ struct CreateView: View {
                 .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(promptFocused ? Color.accentColor.opacity(0.6) : .primary.opacity(0.1)))
                 .onSubmit(submitPrompt)
+            StyleReferenceEditor(references: $references, analysisProgress: $analysisProgress)
+            if VocalOnly.requests(prompt) { VocalOnlyNote() }
             FlowLayout(spacing: 8) {
                 ForEach(Self.suggestions, id: \.self) { s in
                     Button(s) {
@@ -117,7 +125,7 @@ struct CreateView: View {
                 .buttonStyle(.glassProminent)
                 .controlSize(.large)
                 .keyboardShortcut(.return, modifiers: .command)
-                .disabled(prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || submitting)
+                .disabled((prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && references.compactMap(\.promptCue).isEmpty) || submitting)
             }
         }
         .padding(20)
@@ -126,10 +134,14 @@ struct CreateView: View {
 
     private func submitPrompt() {
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !submitting else { return }
+        guard !text.isEmpty || references.contains(where: { $0.promptCue != nil }), !submitting else { return }
         submitting = true
         Task {
-            await model.generateArtists(prompt: text, count: count)
+            let resolved = await StyleReferenceRefresh.resolve(references, db: model.services.db) { analysisProgress = $0 }
+            analysisProgress = nil
+            references = resolved.references
+            let brief = text.isEmpty ? "In the vein of the chosen style references." : text
+            await model.generateArtists(prompt: brief, count: count, cues: resolved.cues)
             prompt = ""
             submitting = false
         }
@@ -311,7 +323,12 @@ struct BatchRow: View {
                     .font(.system(size: 11)).foregroundStyle(.tertiary)
             }
             .accessibilityElement(children: .combine)
-            if b.status == .running || b.status == .planning {
+            if b.kind == .customLyrics, let progress = model.customBatchProgress, b.status == .running || b.status == .planning {
+                ProgressView(value: Double(max(0, progress.index - 1)), total: Double(max(1, progress.total)))
+                    .controlSize(.small).padding(.leading, 26)
+                    .accessibilityLabel("Progress for \(b.title)")
+                    .accessibilityValue("Writing \(progress.label), \(progress.index) of \(progress.total)")
+            } else if b.status == .running || b.status == .planning {
                 ProgressView(value: Double(ready), total: Double(total)).controlSize(.small).padding(.leading, 26)
                     .accessibilityLabel("Progress for \(b.title)")
                     .accessibilityValue("\(ready) of \(total) artists ready")
@@ -351,6 +368,7 @@ struct BatchRow: View {
     }
 
     private func detail(_ b: GenerationBatch, live: BuildStatus?, ready: Int, total: Int) -> String {
+        if b.kind == .customLyrics { return customLyricsDetail(b) }
         switch b.status {
         case .planning: return "Planning the lineup…"
         case .running:
@@ -359,6 +377,23 @@ struct BatchRow: View {
         case .finished: return "\(ready) new artist\(ready == 1 ? "" : "s")"
         case .failed: return b.error ?? "Stopped with an error."
         case .cancelled: return "Cancelled"
+        }
+    }
+
+    private func customLyricsDetail(_ b: GenerationBatch) -> String {
+        switch b.status {
+        case .planning, .running:
+            if let progress = model.customBatchProgress {
+                return "Writing \(progress.label) · \(progress.index) of \(progress.total)"
+            }
+            return "Writing \(b.targetArtists) songs from the same lyrics"
+        case .finished:
+            if let error = b.error, !error.isEmpty { return "Some songs were written. \(error)" }
+            return "\(b.targetArtists) songs from the same lyrics"
+        case .failed:
+            return b.error ?? "None of the songs could be written."
+        case .cancelled:
+            return "Stopped. Songs already written stay in the library."
         }
     }
 }
@@ -401,20 +436,27 @@ struct FlowLayout: Layout {
 struct CustomSongCard: View {
     @Environment(AppModel.self) private var model
     let artists: [Artist]
+    @Binding var references: [StyleReference]
+    @Binding var analysisProgress: String?
     @State private var lyrics = ""
     @State private var style = ""
     @State private var title = ""
     @State private var instrumental = false
     @State private var performer: ID?
+    @State private var severalArtists = false
+    @State private var selectedArtists: [ID] = []
+    @State private var newArtistCount = 0
+    @State private var confirming = false
     @State private var drafting = false
     @State private var submitting = false
+    @State private var createTask: Task<Void, Never>?
     @FocusState private var focus: Field?
 
     enum Field { case lyrics, style, title }
 
     static let styleChips = [
         "pop", "indie rock", "hip hop", "r&b", "electropop", "country", "metal", "jazz", "lo-fi", "synthwave",
-        "female vocals", "male vocals", "upbeat", "melancholic", "acoustic", "808 bass", "80s", "orchestral",
+        "female vocals", "male vocals", "a cappella", "upbeat", "melancholic", "acoustic", "808 bass", "80s", "orchestral",
     ]
 
     var body: some View {
@@ -424,6 +466,7 @@ struct CustomSongCard: View {
                     Text("Lyrics").font(.system(size: 15, weight: .semibold)).accessibilityHeading()
                     Spacer()
                     Toggle("Instrumental", isOn: $instrumental).toggleStyle(.switch).controlSize(.small)
+                        .disabled(VocalOnly.requests(style))
                     Button {
                         draft()
                     } label: {
@@ -467,6 +510,11 @@ struct CustomSongCard: View {
                     .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(focus == .style ? Color.accentColor.opacity(0.6) : .primary.opacity(0.1)))
                     .accessibilityLabel("Style of music")
+                    .onChange(of: style) { _, new in
+                        if VocalOnly.requests(new) { instrumental = false }
+                    }
+                if VocalOnly.requests(style) { VocalOnlyNote() }
+                StyleReferenceEditor(references: $references, analysisProgress: $analysisProgress)
                 FlowLayout(spacing: 6) {
                     ForEach(Self.styleChips, id: \.self) { chip in
                         Button("+ \(chip)") { add(chip) }
@@ -487,38 +535,143 @@ struct CustomSongCard: View {
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Performed by").font(.system(size: 13, weight: .semibold))
-                    Picker("Performed by", selection: $performer) {
-                        Text("A new artist for this song").tag(ID?.none)
-                        if !artists.isEmpty { Divider() }
-                        ForEach(artists.filter(\.isFavorite) + artists.filter { !$0.isFavorite }) { a in
-                            Text(a.name).tag(Optional(a.id))
+                    if severalArtists {
+                        Text(artistSummary).font(.callout).foregroundStyle(.secondary)
+                    } else {
+                        Picker("Performed by", selection: $performer) {
+                            Text("A new artist for this song").tag(ID?.none)
+                            if !artists.isEmpty { Divider() }
+                            ForEach(artists.filter(\.isFavorite) + artists.filter { !$0.isFavorite }) { a in
+                                Text(a.name).tag(Optional(a.id))
+                            }
                         }
+                        .labelsHidden()
+                        .frame(maxWidth: 260)
                     }
-                    .labelsHidden()
-                    .frame(maxWidth: 260)
                 }
                 Spacer()
+                if submitting {
+                    Button("Stop", role: .cancel) { createTask?.cancel() }
+                        .buttonStyle(.glass)
+                }
                 Button(action: create) {
                     if submitting { Label { Text("Creating…") } icon: { ProgressView().controlSize(.small) } }
-                    else { Label("Create", systemImage: "sparkles").frame(minWidth: 80) }
+                    else { Label(createTitle, systemImage: "sparkles").frame(minWidth: 80) }
                 }
                 .buttonStyle(.glassProminent)
                 .controlSize(.large)
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(!canCreate || submitting)
             }
-            Text(performer == nil
-                ? "A new artist is invented to fit the style, with a photo, a story and a cover for your single. It starts recording right away."
-                : "Your single gets its own cover and starts recording right away, in that artist’s voice.")
+            Toggle("Several artists, same lyrics", isOn: $severalArtists)
+                .toggleStyle(.switch)
+                .font(.system(size: 13, weight: .semibold))
+            if severalArtists { severalArtistsControls }
+            if let progress = model.customBatchProgress, submitting {
+                Text("Writing \(progress.index) of \(progress.total) — \(progress.label)")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Text(footerText)
                 .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .confirmationDialog(confirmTitle, isPresented: $confirming, titleVisibility: .visible) {
+            Button(confirmTitle) { startBatch(confirmed: true) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(batchDecision.cost?.summary ?? "")
         }
         .padding(20)
         .glassEffect(.regular, in: .rect(cornerRadius: 18))
     }
 
-    private var canCreate: Bool {
+    private var hasMaterial: Bool {
         !style.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || (!instrumental && !lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            || references.contains { $0.promptCue != nil }
+    }
+
+    private var batchDecision: CustomLyricsBatchDecision {
+        CustomLyricsBatchPlanner.decide(
+            artistIDs: selectedArtists, newArtistCount: newArtistCount, provider: model.provider,
+            openRouterModel: UserDefaults.standard.string(forKey: Pref.openRouterWritingModel),
+            minutesPerRecording: max(1, model.recording.averageSecondsPerSong / 60))
+    }
+
+    private var canCreate: Bool {
+        guard hasMaterial else { return false }
+        if !severalArtists { return true }
+        if case .invalid = batchDecision { return false }
+        return true
+    }
+
+    private var createTitle: String {
+        guard severalArtists, let count = batchDecision.selection?.songCount, count > 1 else { return "Create" }
+        return "Create \(count)"
+    }
+
+    private var confirmTitle: String {
+        let count = batchDecision.selection?.songCount ?? 0
+        return "Create \(count) songs?"
+    }
+
+    private var artistSummary: String {
+        let picked = selectedArtists.count
+        if picked == 0 && newArtistCount == 0 { return "Choose artists below." }
+        if picked == 0 { return "\(newArtistCount) new artist\(newArtistCount == 1 ? "" : "s")" }
+        if newArtistCount == 0 { return "\(picked) from your library" }
+        return "\(picked) from your library, plus \(newArtistCount) new"
+    }
+
+    private var footerText: String {
+        if severalArtists, let cost = batchDecision.cost {
+            var text = cost.summary
+            if let removed = batchDecision.selection?.duplicatesRemoved, removed > 0 {
+                text += " \(removed) duplicate pick\(removed == 1 ? "" : "s") removed."
+            }
+            return text
+        }
+        if !artists.isEmpty && severalArtists && selectedArtists.isEmpty && newArtistCount == 0 {
+            return "Pick finished artists from your library, or invent new ones. A half-written roster can’t perform yet."
+        }
+        return performer == nil
+            ? "A new artist is invented to fit the style, with a photo, a story and a cover for your single. It starts recording right away."
+            : "Your single gets its own cover and starts recording right away, in that artist’s voice."
+    }
+
+    private var severalArtistsControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if artists.isEmpty {
+                Text("No finished artists in your library yet. New artists can still sing these lyrics.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                Text("From your library").font(.system(size: 13, weight: .semibold))
+                FlowLayout(spacing: 6) {
+                    ForEach(artists.filter(\.isFavorite) + artists.filter { !$0.isFavorite }) { artist in
+                        let on = selectedArtists.contains(artist.id)
+                        Button(artist.name) { toggleArtist(artist.id) }
+                            .buttonStyle(.glass)
+                            .controlSize(.small)
+                            .accessibilityLabel(on ? "Remove \(artist.name)" : "Add \(artist.name)")
+                            .accessibilityAddTraits(on ? .isSelected : [])
+                    }
+                }
+            }
+            let room = max(0, CustomLyricsBatchPlanner.maximum - selectedArtists.count)
+            Stepper(value: $newArtistCount, in: 0 ... room) {
+                Text("New artists: \(newArtistCount)").font(.system(size: 13, weight: .semibold))
+            }
+            .onChange(of: selectedArtists) { _, _ in
+                newArtistCount = min(newArtistCount, max(0, CustomLyricsBatchPlanner.maximum - selectedArtists.count))
+            }
+            Text("Same lyrics for every song. No artist is used twice. Up to \(CustomLyricsBatchPlanner.maximum).")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func toggleArtist(_ id: ID) {
+        if let index = selectedArtists.firstIndex(of: id) { selectedArtists.remove(at: index) }
+        else if selectedArtists.count + newArtistCount < CustomLyricsBatchPlanner.maximum { selectedArtists.append(id) }
     }
 
     private func add(_ chip: String) {
@@ -530,18 +683,74 @@ struct CustomSongCard: View {
     private func draft() {
         drafting = true
         Task {
-            if let text = await model.draftLyrics(style: style, about: title) { lyrics = text }
+            let resolved = await StyleReferenceRefresh.resolve(references, db: model.services.db) { analysisProgress = $0 }
+            analysisProgress = nil
+            references = resolved.references
+            if let text = await model.draftLyrics(style: style, about: title, cues: resolved.cues) { lyrics = text }
             drafting = false
         }
     }
 
     private func create() {
         guard canCreate, !submitting else { return }
+        if severalArtists {
+            if case .needsConfirmation = batchDecision {
+                confirming = true
+                return
+            }
+            startBatch(confirmed: false)
+            return
+        }
         submitting = true
-        let request = CustomSongRequest(
-            lyrics: lyrics, style: style, title: title.isEmpty ? nil : title, instrumental: instrumental, artistID: performer)
-        Task {
+        let lyricsNow = lyrics
+        let styleNow = style
+        let titleNow = title
+        let instrumentalNow = instrumental
+        let performerNow = performer
+        createTask = Task {
+            let resolved = await StyleReferenceRefresh.resolve(references, db: model.services.db) { analysisProgress = $0 }
+            analysisProgress = nil
+            guard !Task.isCancelled else { submitting = false; return }
+            let request = CustomSongRequest(
+                lyrics: lyricsNow, style: styleNow, title: titleNow.isEmpty ? nil : titleNow, instrumental: instrumentalNow,
+                artistID: performerNow, references: resolved.cues)
             if await model.createCustomSong(request) {
+                lyrics = ""
+                title = ""
+            }
+            submitting = false
+        }
+    }
+
+    private func startBatch(confirmed: Bool) {
+        guard case .ready(let selection, _) = batchDecision else {
+            if confirmed, case .needsConfirmation(let selection, _) = batchDecision {
+                runBatch(selection)
+            }
+            return
+        }
+        if confirmed || selection.songCount < CustomLyricsBatchPlanner.confirmFrom {
+            runBatch(selection)
+        }
+    }
+
+    private func runBatch(_ selection: CustomLyricsSelection) {
+        submitting = true
+        let lyricsNow = lyrics
+        let styleNow = style
+        let titleNow = title
+        let instrumentalNow = instrumental
+        let planIDs = selection.artistIDs
+        let extra = selection.newArtistCount
+        createTask = Task {
+            let resolved = await StyleReferenceRefresh.resolve(references, db: model.services.db) { analysisProgress = $0 }
+            analysisProgress = nil
+            guard !Task.isCancelled else { submitting = false; return }
+            let plan = CustomLyricsBatchPlan(
+                lyrics: lyricsNow, style: styleNow, title: titleNow.isEmpty ? nil : titleNow, instrumental: instrumentalNow,
+                references: resolved.cues, artistIDs: planIDs, newArtistCount: extra)
+            _ = await model.createCustomLyricsBatch(plan)
+            if !Task.isCancelled {
                 lyrics = ""
                 title = ""
             }

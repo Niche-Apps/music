@@ -139,6 +139,8 @@ public struct Album: Codable, Sendable, Hashable, Identifiable, FetchableRecord,
     public var status: ItemStatus
     public var isFavorite: Bool
     public var createdAt: Date
+    /// Set when this single belongs to a same-lyrics batch. Nil for every other album.
+    public var batchID: ID? = nil
 
     public init(
         id: ID = newID(), artistID: ID, title: String, releaseYear: Int, kind: AlbumKind, label: String = "",
@@ -201,6 +203,11 @@ public struct Track: Codable, Sendable, Hashable, Identifiable, FetchableRecord,
     public var isExplicit: Bool = false
     /// Written by the listener (Create › Custom): their lyrics and style are recorded as given.
     public var isCustom: Bool = false
+    /// The listener asked for vocals with no instruments. Recording keeps that in the style tags.
+    /// The music engine only sees those tags; this is not a guarantee the model will obey.
+    public var vocalOnly: Bool = false
+    /// JSON `[StyleCue]` metadata for style references. Never audio, paths, or bookmarks.
+    public var styleCues: String = "[]"
     public var seed: Int64
     public var status: TrackStatus
     public var audioPath: String?
@@ -324,6 +331,8 @@ public enum BatchKind: String, Codable, Sendable {
     case discover
     /// New album for an existing artist.
     case newRelease
+    /// The same custom lyrics, each song by a different artist.
+    case customLyrics
 }
 
 public enum BatchStatus: String, Codable, Sendable {

@@ -14,15 +14,23 @@ public enum Voice {
     ]
 
     /// The tag line sent to the music model.
-    public static func recordingStyle(tags: String, voice: String, isInstrumental: Bool) -> String {
+    /// `vocalOnly` keeps the a cappella tags (they contain the word "vocal") and never appends
+    /// "instrumental", even when the artist's saved voice says so. A reference track doesn't get a vote.
+    public static func recordingStyle(tags: String, voice: String, isInstrumental: Bool, vocalOnly: Bool = false) -> String {
         let voice = voice.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !voice.isEmpty else { return tags }
+        if !vocalOnly && voice.isEmpty { return tags }
         let kept = tags.split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { tag in
                 let lower = tag.lowercased()
-                return !tag.isEmpty && !singerWords.contains { lower.contains($0) }
+                if tag.isEmpty { return false }
+                if vocalOnly && VocalOnly.isProtected(lower) { return true }
+                return !singerWords.contains { lower.contains($0) }
             }
+        if vocalOnly {
+            let line = (voice.isEmpty || voice.lowercased() == instrumental) ? "unaccompanied vocal" : voice
+            return (kept + [line]).joined(separator: ", ")
+        }
         if isInstrumental || voice.lowercased() == instrumental {
             return (kept + ["instrumental"]).joined(separator: ", ")
         }

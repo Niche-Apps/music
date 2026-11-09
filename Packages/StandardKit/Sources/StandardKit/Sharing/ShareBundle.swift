@@ -91,6 +91,10 @@ public struct SharedTrack: Codable, Sendable {
     public var isExplicit: Bool?
     /// Optional for the same reason: the listener's own song (style recorded as given).
     public var isCustom: Bool?
+    /// Optional. True when the listener asked for vocals with no instruments.
+    public var vocalOnly: Bool?
+    /// Optional JSON `[StyleCue]`. Metadata only; older shares omit it.
+    public var styleCues: String?
     public var seed: Int64
     /// Path inside the archive, when the recording is included.
     public var audio: String?
@@ -223,7 +227,8 @@ public struct ShareBundler: Sendable {
                         id: track.id, discNumber: track.discNumber, trackNumber: track.trackNumber,
                         title: track.title, details: track.details, styleTags: track.styleTags, lyrics: track.lyrics,
                         vocal: track.vocal, bpm: track.bpm, mood: track.mood, isInstrumental: track.isInstrumental,
-                        isExplicit: track.isExplicit, isCustom: track.isCustom, seed: track.seed, audio: audio, duration: audio == nil ? nil : track.duration,
+                        isExplicit: track.isExplicit, isCustom: track.isCustom, vocalOnly: track.vocalOnly,
+                        styleCues: track.styleCues, seed: track.seed, audio: audio, duration: audio == nil ? nil : track.duration,
                         loudness: audio == nil ? nil : track.loudness))
             }
             sharedAlbums.append(
@@ -389,7 +394,9 @@ public struct ShareBundler: Sendable {
                         track.lyrics = shared.lyrics
                         track.isExplicit = shared.isExplicit ?? false
                     }
-                    track.isCustom = shared.isCustom ?? false
+                    track.isCustom = shared.isCustom ?? track.isCustom
+                    if shared.vocalOnly == true { track.vocalOnly = true }
+                    if let cues = shared.styleCues, !cues.isEmpty, track.styleCues == "[]" { track.styleCues = cues }
                     if !track.isPlayable, let path = audio[track.id] {
                         track.status = .ready
                         track.audioPath = path

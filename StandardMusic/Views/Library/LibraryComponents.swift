@@ -218,6 +218,13 @@ struct TrackMenuItems: View {
             }
         }
         Divider()
+        Button("Look Up Lyrics", systemImage: "quote.bubble") { model.lookUpLyrics(info) }
+            .help("Shows lyrics saved with this song. If there are none, opens a web search for the title and artist. Audio isn’t uploaded, and lyrics from the web stay in the browser.")
+        if LyricsLookup.hasSingableLyrics(info.track.lyrics) {
+            Button("Search the Web for Lyrics…", systemImage: "safari") { model.searchWebForLyrics(info) }
+                .help("Opens a web search. Standard Music does not download or store those lyrics.")
+        }
+        Divider()
         Button("Go to Album", systemImage: "square.stack") { model.show(.album(info.album.id)) }
         Button("Go to Artist", systemImage: "music.microphone") { model.show(.artist(info.artist.id)) }
         if track.isPlayable {
@@ -364,6 +371,43 @@ struct LibraryEmptyView: View {
                     .accessibilityValue("\(status.artistsReady) of \(status.artistsTotal) artists ready")
                 Text(status.activity).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
+        }
+    }
+}
+
+/// Playlist pass and free-tier waits. Hidden when nothing is running and nothing has failed.
+struct LibraryWorkBanner: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let status = model.libraryWork
+        let notice = model.openRouterNotice
+        if status.phase == .working || status.phase == .waiting || status.phase == .failed || notice != nil {
+            HStack(spacing: 14) {
+                Image(systemName: status.phase == .failed ? "exclamationmark.triangle.fill" : "music.note.list")
+                    .foregroundStyle(status.phase == .failed ? Color.orange : Color.accentColor)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(status.phase == .idle ? "OpenRouter" : status.progressLabel)
+                        .font(.system(size: 13.5, weight: .semibold))
+                    Text(notice ?? status.detail)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                    if status.total > 0 {
+                        ProgressView(value: Double(status.completed), total: Double(status.total))
+                            .controlSize(.small)
+                            .frame(maxWidth: 360)
+                            .accessibilityLabel("Playlist progress")
+                            .accessibilityValue("\(status.completed) of \(status.total)")
+                    }
+                }
+                Spacer(minLength: 12)
+            }
+            .padding(16)
+            .background(LegibilityScrim(shape: RoundedRectangle(cornerRadius: 16), color: Color(nsColor: .windowBackgroundColor), opacity: 1))
+            .glassEffect(.regular, in: .rect(cornerRadius: 16))
+            .accessibilityElement(children: .combine)
         }
     }
 }

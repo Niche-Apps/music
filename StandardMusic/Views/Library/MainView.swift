@@ -36,6 +36,14 @@ struct MainView: View {
                 }
             }
             .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: model.showsQueue || model.showsLyrics)
+            .overlay(alignment: .top) {
+                let status = model.libraryWork
+                if status.phase == .working || status.phase == .waiting || status.phase == .failed || model.openRouterNotice != nil {
+                    LibraryWorkBanner()
+                        .padding(.horizontal, Metrics.pagePadding)
+                        .padding(.top, 8)
+                }
+            }
         }
         .searchable(text: $model.searchText, placement: .sidebar, prompt: "Search")
         .searchFocused($searchFocused)

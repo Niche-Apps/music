@@ -18,6 +18,9 @@ enum Pref {
     static let openRouterFastModel = "openRouterFastModel"
     /// Empty = procedural artwork ($0); otherwise an OpenRouter image-capable model slug.
     static let openRouterImageModel = "openRouterImageModel"
+    /// Off by default. A paid model tried only after every free model has failed.
+    static let openRouterPaidFallback = "openRouterPaidFallback"
+    static let openRouterPaidFallbackModel = "openRouterPaidFallbackModel"
     static let engineIdleMinutes = "engineIdleMinutes"
     static let modelVariant = "modelVariant"
     static let miniPlayerFloats = "miniPlayerFloats"
@@ -52,6 +55,8 @@ enum Pref {
             openRouterWritingModel: OpenRouterCatalog.defaultModel,
             openRouterFastModel: OpenRouterCatalog.defaultModel,
             openRouterImageModel: "",
+            openRouterPaidFallback: false,
+            openRouterPaidFallbackModel: "",
             engineIdleMinutes: 5,
             modelVariant: ModelVariant.recommended.rawValue,
             miniPlayerFloats: true,

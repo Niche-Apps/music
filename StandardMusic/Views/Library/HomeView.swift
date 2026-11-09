@@ -95,6 +95,8 @@ struct HomeView: View {
                             .padding(.top, 24)
                         LibraryBuildingBanner()
                             .padding(.horizontal, Metrics.pagePadding)
+                        playlistRow
+                            .padding(.horizontal, Metrics.pagePadding)
                         hero
                         ForEach(HomeShelf.allCases, id: \.self) { shelf in
                             if let albums = data.shelves[shelf], !albums.isEmpty {
@@ -125,6 +127,17 @@ struct HomeView: View {
         } update: { value in
             data = value
             loaded = true
+        }
+    }
+
+    private var playlistRow: some View {
+        HStack(spacing: 12) {
+            Button("Make Playlists") { Task { await model.organizePlaylists() } }
+                .buttonStyle(.bordered)
+                .disabled(model.libraryWork.phase == .working || model.libraryWork.phase == .waiting || data.albumCount == 0)
+            Text("Groups albums you already have. Unchanged files are skipped. Free OpenRouter requests stay on free models.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

@@ -81,6 +81,12 @@ public enum OpenRouterCatalog {
         }
     }
 
+    /// `openrouter/free` and any `:free` slug. A paid id, including a last-resort override, is not free.
+    public static func isFreeModel(_ model: String) -> Bool {
+        let id = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return id == defaultModel || id.hasSuffix(":free")
+    }
+
     /// Any slug the listener types: trimmed, non-empty, no inner whitespace. Not checked against the catalog
     /// on purpose so brand-new or private slugs work immediately.
     public static func normalizedModelID(_ raw: String) -> String? {
@@ -188,38 +194,126 @@ public enum OpenRouterKey {
         resolve(stored: nil, environment: ProcessInfo.processInfo.environment) != nil
     }
 
-    public static var isStored: Bool { load() != nil }
+    /// Data-protection Keychain items are tied to the app's signature. An ad-hoc re-sign after
+    /// reinstall returns `errSecMissingEntitlement` or `errSecAuthFailed` instead of the key.
+    /// Those statuses fall back to a 0600 file. A normal "not found" does not, so Clear still forgets the key.
+    public static func isAdHocKeychainFailure(_ status: OSStatus) -> Bool {
+        status == errSecMissingEntitlement || status == errSecAuthFailed || status == errSecInteractionNotAllowed
+    }
 
     public static func load() -> String? {
+        resolveStored(keychainRead: readKeychain, root: fallbackRoot)
+    }
+
+    public static var isStored: Bool { load() != nil }
+
+    public static var fileFallbackIsPresent: Bool {
+        FileManager.default.fileExists(atPath: fallbackFile(root: fallbackRoot).path)
+    }
+
+    @discardableResult
+    public static func save(_ key: String) -> Bool {
+        persist(key, keychainWrite: writeKeychain, keychainDelete: deleteKeychainItem, root: fallbackRoot)
+    }
+
+    public static func delete() {
+        _ = deleteKeychainItem()
+        try? FileManager.default.removeItem(at: fallbackFile(root: fallbackRoot))
+    }
+
+    static func resolveStored(keychainRead: () -> (OSStatus, String?), root: URL) -> String? {
+        let (status, value) = keychainRead()
+        if let value, !value.isEmpty { return value }
+        // Item-not-found still checks the file: an ad-hoc save may have had nowhere else to put the key.
+        // Clear deletes the file, so a real removal stays removed.
+        if status == errSecItemNotFound || isAdHocKeychainFailure(status) {
+            return readFile(root: root)
+        }
+        return nil
+    }
+
+    static func persist(
+        _ key: String, keychainWrite: (String) -> OSStatus, keychainDelete: () -> OSStatus, root: URL
+    ) -> Bool {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        _ = keychainDelete()
+        guard !trimmed.isEmpty else {
+            try? FileManager.default.removeItem(at: fallbackFile(root: root))
+            return true
+        }
+        let status = keychainWrite(trimmed)
+        if status == errSecSuccess {
+            try? FileManager.default.removeItem(at: fallbackFile(root: root))
+            return true
+        }
+        if status == errSecDuplicateItem {
+            _ = keychainDelete()
+            if keychainWrite(trimmed) == errSecSuccess {
+                try? FileManager.default.removeItem(at: fallbackFile(root: root))
+                return true
+            }
+        }
+        guard isAdHocKeychainFailure(status) || status == errSecDuplicateItem else { return false }
+        return writeFile(trimmed, root: root)
+    }
+
+    static var fallbackRoot: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        return base.appending(path: "StandardMusic", directoryHint: .isDirectory)
+    }
+
+    private static func fallbackFile(root: URL) -> URL {
+        root.appending(path: "openrouter-key", directoryHint: .notDirectory)
+    }
+
+    private static func readKeychain() -> (OSStatus, String?) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
             kSecAttrAccount as String: account, kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var out: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess, let data = out as? Data else { return nil }
-        let s = String(decoding: data, as: UTF8.self)
-        return s.isEmpty ? nil : s
+        let status = SecItemCopyMatching(query as CFDictionary, &out)
+        guard status == errSecSuccess, let data = out as? Data else { return (status, nil) }
+        let value = String(decoding: data, as: UTF8.self)
+        return (status, value.isEmpty ? nil : value)
+    }
+
+    private static func writeKeychain(_ key: String) -> OSStatus {
+        let attrs: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+            kSecAttrAccount as String: account, kSecValueData as String: Data(key.utf8),
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+        ]
+        return SecItemAdd(attrs as CFDictionary, nil)
     }
 
     @discardableResult
-    public static func save(_ key: String) -> Bool {
-        delete()
-        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return true }
-        let attrs: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-            kSecAttrAccount as String: account, kSecValueData as String: Data(trimmed.utf8),
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-        ]
-        return SecItemAdd(attrs as CFDictionary, nil) == errSecSuccess
-    }
-
-    public static func delete() {
+    private static func deleteKeychainItem() -> OSStatus {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
-        SecItemDelete(query as CFDictionary)
+        let status = SecItemDelete(query as CFDictionary)
+        return status == errSecItemNotFound ? errSecSuccess : status
+    }
+
+    private static func readFile(root: URL) -> String? {
+        guard let data = try? Data(contentsOf: fallbackFile(root: root)) else { return nil }
+        let value = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+
+    private static func writeFile(_ key: String, root: URL) -> Bool {
+        do {
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            let url = fallbackFile(root: root)
+            try Data(key.utf8).write(to: url, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            return true
+        } catch {
+            return false
+        }
     }
 }
 
@@ -231,25 +325,39 @@ public actor OpenRouterClient {
 
     private let apiKey: String
     private let transport: Transport
+    private let clock: any OpenRouterClock
+    private var paidFallback: OpenRouterPaidFallback
     /// Models that rejected (or per the catalog don't support) `response_format: json_schema`.
     private var schemaUnsupported: Set<String> = []
+    /// Free text models from the last catalog refresh. Image-only models are left out.
+    private var catalogFree: [String] = []
+    /// Reserved start time of the next free-model request. Set before any await so concurrent callers share it.
+    private var nextFreeAt: Date?
+    private var activityHandler: (@Sendable (LibraryWorkStatus) -> Void)?
 
-    public init(apiKey: String, transport: Transport? = nil) {
+    public init(
+        apiKey: String, transport: Transport? = nil, clock: any OpenRouterClock = SystemOpenRouterClock(),
+        paidFallback: OpenRouterPaidFallback = .off
+    ) {
         self.apiKey = apiKey
+        self.clock = clock
+        self.paidFallback = paidFallback
         if let transport {
             self.transport = transport
         } else {
             let config = URLSessionConfiguration.default
-            config.timeoutIntervalForRequest = 180
-            config.timeoutIntervalForResource = 600
+            config.timeoutIntervalForRequest = OpenRouterFreeChain.requestTimeout
+            config.timeoutIntervalForResource = OpenRouterFreeChain.requestTimeout
             let session = URLSession(configuration: config)
             self.transport = { request in
                 let data: Data
                 let response: URLResponse
                 do {
                     (data, response) = try await session.data(for: request)
+                } catch let error as URLError where error.code == .timedOut {
+                    throw error
                 } catch let error as URLError where OpenRouterClient.isTransient(error) {
-                    // Dropped/timed-out connections are retryable (ChatGPTError.failed), not batch-ending.
+                    // Dropped connections are retryable (ChatGPTError.failed), not batch-ending.
                     throw ChatGPTError.failed("Lost the connection to OpenRouter (\(error.localizedDescription)). Retrying…")
                 }
                 guard let http = response as? HTTPURLResponse else { throw ChatGPTError.failed("No response") }
@@ -265,9 +373,16 @@ public actor OpenRouterClient {
 
     public func noteCatalog(_ models: [OpenRouterModel]) {
         for m in models where !m.supportsStructuredOutputs && !m.supportedParameters.isEmpty { schemaUnsupported.insert(m.id) }
+        catalogFree = models.filter { $0.isFree && $0.outputsText && !$0.outputsImages }.map(\.id)
     }
 
     public func markSchemaUnsupported(_ model: String) { schemaUnsupported.insert(model) }
+
+    public func setPaidFallback(_ fallback: OpenRouterPaidFallback) { paidFallback = fallback }
+
+    public func setActivityHandler(_ handler: (@Sendable (LibraryWorkStatus) -> Void)?) {
+        activityHandler = handler
+    }
 
     /// Returns UTF-8 JSON data for the schema; the caller decodes it.
     public func json(schemaName: String, schema: JSON, instructions: String, prompt: String, model: String) async throws -> Data {
@@ -279,42 +394,83 @@ public actor OpenRouterClient {
         Include every property, no extra keys, no markdown fences, no commentary:
         \(schemaText)
         """
-        var useSchema = !schemaUnsupported.contains(model)
-        while true {
-            var body: [String: JSON] = [
-                "model": .string(model),
-                "messages": [["role": "system", "content": .string(system)], ["role": "user", "content": .string(prompt)]],
-            ]
-            if useSchema {
-                body["response_format"] = [
-                    "type": "json_schema",
-                    "json_schema": ["name": .string(schemaName), "strict": true, "schema": schema],
-                ]
-            }
-            do {
-                let message = try await send(body)
-                guard let json = OpenRouterJSON.extract(message.content) ?? OpenRouterJSON.extract(message.reasoning)
-                else {
-                    if useSchema { schemaUnsupported.insert(model); useSchema = false; continue }
-                    throw ChatGPTError.malformed("\(schemaName): model didn't return JSON")
+        return try await attemptChain(model) { candidate in
+            var useSchema = !self.schemaUnsupported.contains(candidate)
+            while true {
+                var body = self.lightBody(model: candidate, system: system, prompt: prompt)
+                if useSchema {
+                    body["response_format"] = [
+                        "type": "json_schema",
+                        "json_schema": ["name": .string(schemaName), "strict": true, "schema": schema],
+                    ]
                 }
-                return Data(json.utf8)
-            } catch ChatGPTError.http(let status, let text) where useSchema && [400, 404, 422].contains(status) {
-                orLog.info("\(model, privacy: .public) rejected json_schema (\(status)); retrying with prompt-guided JSON")
-                _ = text
-                schemaUnsupported.insert(model)
-                useSchema = false
+                do {
+                    let message = try await self.send(body)
+                    guard let json = OpenRouterJSON.extract(message.content) ?? OpenRouterJSON.extract(message.reasoning)
+                    else {
+                        if useSchema {
+                            self.schemaUnsupported.insert(candidate)
+                            useSchema = false
+                            continue
+                        }
+                        throw ChatGPTError.malformed("\(schemaName): model didn't return JSON")
+                    }
+                    return Data(json.utf8)
+                } catch ChatGPTError.http(let status, let text) where useSchema && [400, 404, 422].contains(status) {
+                    orLog.info("\(candidate, privacy: .public) rejected json_schema (\(status)); retrying with prompt-guided JSON")
+                    _ = text
+                    self.schemaUnsupported.insert(candidate)
+                    useSchema = false
+                }
             }
         }
     }
 
     public func text(instructions: String, prompt: String, model: String) async throws -> String {
-        let body: [String: JSON] = [
+        try await attemptChain(model) { candidate in
+            let body = self.lightBody(model: candidate, system: instructions, prompt: prompt)
+            let message = try await self.send(body)
+            let text = message.content.isEmpty ? message.reasoning : message.content
+            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                throw ChatGPTError.malformed("empty text")
+            }
+            return text
+        }
+    }
+
+    /// Light tasks ask for low reasoning effort. Image calls do not; some image routers reject the field.
+    private func lightBody(model: String, system: String, prompt: String) -> [String: JSON] {
+        [
             "model": .string(model),
-            "messages": [["role": "system", "content": .string(instructions)], ["role": "user", "content": .string(prompt)]],
+            "messages": [["role": "system", "content": .string(system)], ["role": "user", "content": .string(prompt)]],
+            "reasoning": ["effort": .string("low")],
         ]
-        let m = try await send(body)
-        return m.content.isEmpty ? m.reasoning : m.content
+    }
+
+    /// Free models walk `OpenRouterFreeChain` after a 429 or a timeout. A paid starting model stays put
+    /// so the caller's existing dead-model fallback to `openrouter/free` still runs.
+    private func attemptChain<T>(_ model: String, _ operation: (String) async throws -> T) async throws -> T {
+        let models = OpenRouterFreeChain.order(starting: model, catalogFree: catalogFree, paid: paidFallback)
+        let freeStart = OpenRouterCatalog.isFreeModel(model)
+        var last = ChatGPTError.exhausted("OpenRouter produced no response.")
+        for (index, candidate) in models.enumerated() {
+            do {
+                return try await operation(candidate)
+            } catch let error as ChatGPTError where freeStart && Self.advancesFreeChain(error) {
+                last = error
+                if index < models.count - 1 { continue }
+                throw ChatGPTError.exhausted(error.localizedDescription ?? "OpenRouter free models are unavailable.")
+            }
+        }
+        throw last
+    }
+
+    static func advancesFreeChain(_ error: ChatGPTError) -> Bool {
+        switch error {
+        case .rateLimited, .exhausted: true
+        case .http(let code, _) where code == 408: true
+        default: false
+        }
     }
 
     /// Image generation through chat completions with `modalities`; returns raw image bytes.
@@ -334,6 +490,7 @@ public actor OpenRouterClient {
     /// Free check of the key (`GET /api/v1/key`).
     public func checkKey() async throws -> String? {
         var request = URLRequest(url: URL(string: "https://openrouter.ai/api/v1/key")!)
+        request.timeoutInterval = OpenRouterFreeChain.requestTimeout
         authorize(&request)
         let (data, http) = try await transport(request)
         guard http.statusCode == 200 else { throw Self.error(status: http.statusCode, data: data) }
@@ -355,20 +512,80 @@ public actor OpenRouterClient {
     }
 
     private func send(_ body: [String: JSON]) async throws -> Message {
-        var request = URLRequest(url: Self.endpoint)
-        request.httpMethod = "POST"
-        request.httpBody = try JSONEncoder().encode(JSON.object(body))
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        authorize(&request)
-        let (data, http) = try await transport(request)
-        guard http.statusCode == 200 else {
-            if http.statusCode == 429 {
-                let retry = http.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init)
-                throw ChatGPTError.rateLimited(
-                    retryAfter: retry, message: "OpenRouter is rate-limiting this model for now. Generation will resume automatically.")
+        let model = body["model"]?.stringValue ?? ""
+        var attempt = 0
+        while true {
+            await pace(model: model)
+            var request = URLRequest(url: Self.endpoint)
+            request.timeoutInterval = OpenRouterFreeChain.requestTimeout
+            request.httpMethod = "POST"
+            request.httpBody = try JSONEncoder().encode(JSON.object(body))
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            authorize(&request)
+            let response: (Data, HTTPURLResponse)
+            do {
+                response = try await transport(request)
+            } catch let error as URLError where error.code == .timedOut {
+                attempt += 1
+                if attempt >= OpenRouterFreeChain.maxAttemptsPerModel {
+                    let message = "OpenRouter timed out after \(Int(OpenRouterFreeChain.requestTimeout))s."
+                    report(.failed, message)
+                    throw ChatGPTError.exhausted(message)
+                }
+                let delay = OpenRouterFreeChain.delay(status: 408, retryAfter: nil, attempt: attempt)
+                report(.waiting, "OpenRouter timed out. Retrying in \(Int(delay.rounded()))s.")
+                await clock.sleep(seconds: delay)
+                continue
+            } catch let error as URLError where OpenRouterClient.isTransient(error) {
+                throw ChatGPTError.failed("Lost the connection to OpenRouter (\(error.localizedDescription)). Retrying…")
+            }
+            let (data, http) = response
+            if http.statusCode == 200 {
+                let message = try parse(data)
+                report(.idle, "")
+                return message
+            }
+            if http.statusCode == 429 || http.statusCode >= 500 || http.statusCode == 408 {
+                attempt += 1
+                let retryAfter = http.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init)
+                let message = Self.error(status: http.statusCode, data: data).localizedDescription
+                if attempt >= OpenRouterFreeChain.maxAttemptsPerModel {
+                    report(.failed, message)
+                    if http.statusCode == 429 {
+                        throw ChatGPTError.rateLimited(retryAfter: retryAfter, message: message)
+                    }
+                    throw Self.error(status: http.statusCode, data: data)
+                }
+                let delay = OpenRouterFreeChain.delay(status: http.statusCode, retryAfter: retryAfter, attempt: attempt)
+                let capped = retryAfter.map { $0 > OpenRouterFreeChain.retryAfterCap } ?? false
+                let detail = capped
+                    ? "\(message) Retry-After was capped at \(Int(OpenRouterFreeChain.retryAfterCap))s."
+                    : "\(message) Retrying in \(Int(delay.rounded()))s."
+                report(.waiting, detail)
+                await clock.sleep(seconds: delay)
+                continue
             }
             throw Self.error(status: http.statusCode, data: data)
         }
+    }
+
+    /// Reserves the next free slot before awaiting, so overlapping batches share one pace.
+    private func pace(model: String) async {
+        guard OpenRouterCatalog.isFreeModel(model) else { return }
+        let now = clock.now()
+        let start = nextFreeAt.map { max($0, now) } ?? now
+        let delay = start.timeIntervalSince(now)
+        nextFreeAt = start.addingTimeInterval(OpenRouterFreeChain.gap)
+        guard delay > 0 else { return }
+        report(.waiting, "Free models are paced. Waiting \(String(format: "%.1f", delay))s.")
+        await clock.sleep(seconds: delay)
+    }
+
+    private func report(_ phase: LibraryWorkStatus.Phase, _ detail: String) {
+        activityHandler?(LibraryWorkStatus(phase: phase, step: "OpenRouter", completed: 0, total: 0, detail: detail))
+    }
+
+    private func parse(_ data: Data) throws -> Message {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw ChatGPTError.malformed("OpenRouter returned non-JSON")
         }
@@ -385,10 +602,15 @@ public actor OpenRouterClient {
         if content.isEmpty, let parts = message["content"] as? [[String: Any]] {
             content = parts.compactMap { $0["text"] as? String }.joined()
         }
+        var reasoning = message["reasoning"] as? String ?? ""
+        if reasoning.isEmpty, let alternate = message["reasoning_content"] as? String { reasoning = alternate }
         let images = (message["images"] as? [[String: Any]] ?? []).compactMap {
             ($0["image_url"] as? [String: Any])?["url"] as? String
         }
-        return Message(content: content, reasoning: message["reasoning"] as? String ?? "", imageURLs: images)
+        if content.isEmpty, reasoning.isEmpty, images.isEmpty {
+            throw ChatGPTError.malformed("OpenRouter returned an empty response.")
+        }
+        return Message(content: content, reasoning: reasoning, imageURLs: images)
     }
 
     static func error(status: Int, data: Data) -> ChatGPTError {

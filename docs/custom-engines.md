@@ -61,7 +61,7 @@ folder the engine program lives in. Load the model, then reply with `ready`.
 | Field | Meaning |
 |---|---|
 | `id` | Echo it back in every reply about this song. |
-| `style` | Comma-separated tags: language, genre, era, instruments, mood, then the artist's voice. This is the main prompt. |
+| `style` | Comma-separated tags: language, genre, era, instruments, mood, then the artist's voice. This is the main prompt. A local audio measurement may add threshold words such as `brighter` or `faster`; those are not instrument names. When the listener asked for a cappella, the tags include `a cappella, vocals only, no instruments` and `isInstrumental` is false. Those tags are guidance, not a separate vocal-only render mode. |
 | `lyrics` | Full lyrics with section tags (`[Verse]`, `[Chorus]`, `[Bridge]`, `[Interlude]`, `[Outro]`…). Empty sections mean instrumental passages. |
 | `seed` | Use it. The same song should come out the same every time, including on a friend's Mac after a shared album. |
 | `steps` | The listener's quality setting: 8 (Demo), 16 (Balanced) or 32 (Studio). Map it onto your model's own speed/quality knob. |

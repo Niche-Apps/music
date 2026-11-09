@@ -37,7 +37,8 @@ public struct SongWriter: Sendable {
         let rating = mayBeExplicit
             ? "Content: this is one of the artist's explicit songs (the album gets a Parental Advisory). Use some strong language and/or frank adult content, the way this artist would: in character, landing where it hits hardest, not in every line, and never slurs."
             : "Content: keep it clean — no profanity, slurs or graphic sexual content (radio-edit clean)."
-        let prompt = """
+        let vocalOnly = info.track.vocalOnly
+        let prompt = StylePipeline.appending("""
             Artist: \(info.artist.name) (\(info.artist.primaryGenre), \(info.artist.origin))
             Artist soul: \(info.artist.soul)
             Album: "\(info.album.title)" (\(info.album.releaseYear)). Album soul: \(info.album.soul)
@@ -64,14 +65,15 @@ public struct SongWriter: Sendable {
             - No notes, no chords, no performer names, no title line.
             - If the song notes describe an instrumental or wordless piece, write only a few wordless vocal lines (e.g. "Ooh, ooh" or "Ah") or leave sections empty — but keep the section headers so the arrangement has a shape.
             explicit: true only if the lyrics you wrote contain strong language or explicit sexual/drug content.
-            styleTags: the tag line for the music model: 8–12 short comma-separated tags of one to three words each, in this order: genre and subgenre, 3–5 defining instruments in plain words ("distorted electric guitar", "808 bass", "synth bass"), then this song's mood and a tempo word (e.g. "defiant, midtempo"). Add a language only if the lyrics are not in English. No production or era phrases ("glossy 2020s production", "live-room recording"), no sentences. Never describe the singer; their fixed voice is added automatically. The music model only hears these tags, so they must sound unmistakably like \(info.artist.primaryGenre): use its defining instruments, and leave out any instrument or texture that belongs to another genre (synths on a rock song, acoustic guitar on electropop, "tactile", "felt", "intimate").
-            """
+            \(vocalOnly ? VocalOnly.tagInstruction : "styleTags: the tag line for the music model: 8–12 short comma-separated tags of one to three words each, in this order: genre and subgenre, 3–5 defining instruments in plain words (\"distorted electric guitar\", \"808 bass\", \"synth bass\"), then this song's mood and a tempo word (e.g. \"defiant, midtempo\"). Add a language only if the lyrics are not in English. No production or era phrases (\"glossy 2020s production\", \"live-room recording\"), no sentences. Never describe the singer; their fixed voice is added automatically. The music model only hears these tags, so they must sound unmistakably like \(info.artist.primaryGenre): use its defining instruments, and leave out any instrument or texture that belongs to another genre (synths on a rock song, acoustic guitar on electropop, \"tactile\", \"felt\", \"intimate\").")
+            """, vocalOnly: vocalOnly, cues: info.track.decodedStyleCues)
         let p = try await client.json(
             Payload.self, schemaName: "song", schema: schema,
             instructions: "You are a gifted songwriter who writes in other artists' voices. You trust ambiguity: fresh, strange, singable lines, natural or slant rhyme, no clichés, never spelling out what a song means.",
             prompt: prompt, effort: "low")
         let lyrics = Self.clean(p.lyrics)
-        let tags = p.styleTags.trimmingCharacters(in: .whitespacesAndNewlines)
+        let written = p.styleTags.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tags = vocalOnly ? VocalOnly.enforce(written) : written
         let explicit = ContentRating.containsExplicitLanguage(lyrics) || (mayBeExplicit && p.explicit)
         return try db.modifyTrack(trackID) {
             $0.lyrics = lyrics
@@ -84,9 +86,10 @@ public struct SongWriter: Sendable {
     /// vocals of songs already recorded. The first writer wins so concurrent songs agree.
     /// Lyrics for Create › Custom: a complete, sectioned song in the given style, optionally about
     /// something or titled. The listener edits them before recording.
-    public func draft(style: String, about: String) async throws -> String {
+    public func draft(style: String, about: String, cues: [StyleCue] = []) async throws -> String {
         struct Draft: Decodable, Sendable { var lyrics: String }
-        let prompt = """
+        let vocalOnly = VocalOnly.requests(style)
+        let prompt = StylePipeline.appending("""
             Write lyrics for a song in this style: \(style.isEmpty ? "any style that suits the idea" : style)
             \(about.isEmpty ? "" : "It's about, or titled: \(about)")
             \(GenreSound.guide(for: [style]))
@@ -96,7 +99,8 @@ public struct SongWriter: Sendable {
             Format strictly: section headers on their own line ([Intro], [Verse], [Pre-Chorus], [Chorus], [Bridge], [Outro]), \
             a blank line between sections, 4–6 short singable lines per verse, a chorus repeated 2–3 times verbatim. \
             No title line, no notes, no chords.
-            """
+            \(vocalOnly ? "The listener asked for a cappella. Write sung lines, not an instrumental. Do not describe instruments." : "")
+            """, vocalOnly: vocalOnly, cues: cues)
         let d = try await client.json(
             Draft.self, schemaName: "draft", schema: Schema.object(["lyrics": Schema.string()]),
             instructions: "You are a gifted songwriter. Fresh, strange, singable lines; natural or slant rhyme; no clichés.",

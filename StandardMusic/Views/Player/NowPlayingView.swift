@@ -346,9 +346,21 @@ private struct SidePanel: View {
             if model.player.isWaiting {
                 WaitingPanel(info: info)
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))
-            } else if showsLyrics, let lyrics = info.track.lyrics, !lyrics.isEmpty, !info.track.isInstrumental {
+            } else if showsLyrics, LyricsLookup.hasSingableLyrics(info.track.lyrics), !info.track.isInstrumental, let lyrics = info.track.lyrics {
                 TimedLyrics(lyrics: lyrics, trackID: info.id)
                     .transition(.opacity)
+            } else if showsLyrics {
+                VStack(spacing: 18) {
+                    Text(info.track.isInstrumental ? "This song is marked instrumental." : "No lyrics are saved for this song yet.")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text("A web search uses the title and artist only. The results stay in your browser — they aren’t copied into Standard Music.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .multilineTextAlignment(.center)
+                    LookUpLyricsButton(info: info, prominent: true)
+                }
+                .padding(28)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
                     LinerNotes(info: info).padding(.vertical, 40)
