@@ -143,10 +143,23 @@ public struct LibraryFileStamp: Sendable, Equatable, Codable {
 
 public enum LibraryScan {
     /// Size and modification time only. The file's bytes are not read.
+    /// A reused `URL` caches both, so this clears that cache and stats the path again.
     public static func stamp(key: String, url: URL) -> LibraryFileStamp? {
-        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
-        guard let size = values?.fileSize, let modified = values?.contentModificationDate else { return nil }
-        return LibraryFileStamp(key: key, byteCount: size, modifiedAt: modified.timeIntervalSince1970)
+        var fresh = url
+        fresh.removeAllCachedResourceValues()
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: fresh.path),
+           let size = (attrs[.size] as? NSNumber)?.intValue,
+           let modified = attrs[.modificationDate] as? Date {
+            return LibraryFileStamp(key: key, byteCount: size, modifiedAt: milliseconds(modified))
+        }
+        guard let values = try? fresh.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]),
+              let size = values.fileSize, let modified = values.contentModificationDate else { return nil }
+        return LibraryFileStamp(key: key, byteCount: size, modifiedAt: milliseconds(modified))
+    }
+
+    /// APFS stores nanoseconds. Both reads of one file use whole milliseconds so they compare equal.
+    private static func milliseconds(_ date: Date) -> TimeInterval {
+        (date.timeIntervalSince1970 * 1_000).rounded() / 1_000
     }
 
     /// Keys whose file appeared, grew, shrank, or was rewritten. Unchanged stamps are omitted.

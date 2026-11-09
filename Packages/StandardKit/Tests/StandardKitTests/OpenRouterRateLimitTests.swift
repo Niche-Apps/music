@@ -207,14 +207,22 @@ final class StatusLog: @unchecked Sendable {
         let changed = directory.appending(path: "changed.m4a")
         try Data("a".utf8).write(to: kept)
         try Data("a".utf8).write(to: changed)
+        let baseline = Date(timeIntervalSince1970: 1_700_000_000)
+        try FileManager.default.setAttributes([.modificationDate: baseline], ofItemAtPath: kept.path)
+        try FileManager.default.setAttributes([.modificationDate: baseline], ofItemAtPath: changed.path)
         let beforeKept = try #require(LibraryScan.stamp(key: "kept", url: kept))
         let beforeChanged = try #require(LibraryScan.stamp(key: "changed", url: changed))
         #expect(LibraryScan.needsWork(current: [beforeKept, beforeChanged], previous: [beforeKept, beforeChanged]).isEmpty)
         try Data("longer".utf8).write(to: changed)
+        try FileManager.default.setAttributes([.modificationDate: baseline.addingTimeInterval(3600)], ofItemAtPath: changed.path)
         let after = try #require(LibraryScan.stamp(key: "changed", url: changed))
         #expect(LibraryScan.needsWork(current: [beforeKept, after], previous: [beforeKept, beforeChanged]) == ["changed"])
         #expect(beforeKept.byteCount == 1)
         #expect(after.byteCount == 6)
+        try FileManager.default.setAttributes([.modificationDate: baseline.addingTimeInterval(7200)], ofItemAtPath: kept.path)
+        let retimed = try #require(LibraryScan.stamp(key: "kept", url: kept))
+        #expect(retimed.byteCount == beforeKept.byteCount)
+        #expect(LibraryScan.needsWork(current: [retimed, beforeChanged], previous: [beforeKept, beforeChanged]) == ["kept"])
     }
 
     @Test func oneAlbumFailureDoesNotDropTheNextAndStatusShowsWhy() async throws {
