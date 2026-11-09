@@ -157,17 +157,30 @@ public actor LibraryBuilder {
             }
             return batches
         }
-        for batch in batches where running[batch.id] == nil { launch(batch) }
+        for batch in batches where batch.kind != .customLyrics && running[batch.id] == nil { launch(batch) }
         resumeOrphanedReleases()
+    }
+
+    /// Unfinished roster albums. A custom single, including one from a same-lyrics batch, is not a
+    /// roster release: resuming it would replace the listener's lyrics with a generated tracklist.
+    static func releasesToFinish(_ db: Database) throws -> [Album] {
+        let albums = try Album.filter(Column("status") != ItemStatus.ready.rawValue)
+            .joining(required: Album.artist.filter(Column("status") == ItemStatus.ready.rawValue))
+            .fetchAll(db)
+        var kept: [Album] = []
+        for album in albums {
+            if album.batchID != nil { continue }
+            let custom = try Int.fetchOne(
+                db, sql: "SELECT COUNT(*) FROM track WHERE albumID = ? AND isCustom != 0", arguments: [album.id]) ?? 0
+            if custom > 0 { continue }
+            kept.append(album)
+        }
+        return kept
     }
 
     /// New releases interrupted by quitting: finish their tracklist and cover.
     private func resumeOrphanedReleases() {
-        guard let orphans = try? db.reader.read({ db in
-            try Album.filter(Column("status") != ItemStatus.ready.rawValue)
-                .joining(required: Album.artist.filter(Column("status") == ItemStatus.ready.rawValue))
-                .fetchAll(db)
-        }), !orphans.isEmpty else { return }
+        guard let orphans = try? db.reader.read({ try Self.releasesToFinish($0) }), !orphans.isEmpty else { return }
         Task {
             for album in orphans {
                 guard let artist = try? await db.reader.read({ try Artist.fetchOne($0, key: album.artistID) }) else { continue }

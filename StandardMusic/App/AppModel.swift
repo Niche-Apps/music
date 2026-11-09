@@ -457,6 +457,39 @@ final class AppModel {
         }
     }
 
+    /// Progress while a same-lyrics batch is being written. Nil when none is running.
+    var customBatchProgress: CustomLyricsBatchProgress?
+
+    /// One single per artist, same lyrics. Successful songs are queued to record, one at a time.
+    func createCustomLyricsBatch(_ plan: CustomLyricsBatchPlan) async -> CustomLyricsBatchResult {
+        let (stream, continuation) = AsyncStream.makeStream(of: CustomLyricsBatchProgress.self)
+        let updates = Task { @MainActor in
+            for await progress in stream {
+                self.customBatchProgress = progress
+            }
+        }
+        let result = await services.builder.createCustomLyricsBatch(plan, onProgress: { continuation.yield($0) })
+        continuation.finish()
+        await updates.value
+        customBatchProgress = nil
+        let ids = result.successes.compactMap(\.trackID)
+        if !ids.isEmpty { recording.request(ids) }
+        if let albumID = result.successes.compactMap(\.albumID).first { showAlbum(albumID) }
+        let written = result.successes.count
+        let failed = result.failures.count
+        if result.cancelled {
+            toast = written > 0
+                ? "Stopped. \(written) song\(written == 1 ? "" : "s") already written and queued to record."
+                : "Stopped before any song was written."
+        } else if failed > 0 {
+            let who = result.failures.first?.artistName ?? "One song"
+            toast = "\(written) of \(written + failed) songs queued. \(who) failed."
+        } else {
+            toast = "Queued \(written) song\(written == 1 ? "" : "s"). They record one at a time on this Mac."
+        }
+        return result
+    }
+
     /// Create › Custom: the listener's own lyrics and style, as a single that records and plays.
     /// Returns false (with a toast) if it couldn't be written.
     @discardableResult

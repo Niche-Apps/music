@@ -139,6 +139,8 @@ public struct Album: Codable, Sendable, Hashable, Identifiable, FetchableRecord,
     public var status: ItemStatus
     public var isFavorite: Bool
     public var createdAt: Date
+    /// Set when this single belongs to a same-lyrics batch. Nil for every other album.
+    public var batchID: ID? = nil
 
     public init(
         id: ID = newID(), artistID: ID, title: String, releaseYear: Int, kind: AlbumKind, label: String = "",
@@ -329,6 +331,8 @@ public enum BatchKind: String, Codable, Sendable {
     case discover
     /// New album for an existing artist.
     case newRelease
+    /// The same custom lyrics, each song by a different artist.
+    case customLyrics
 }
 
 public enum BatchStatus: String, Codable, Sendable {

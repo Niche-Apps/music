@@ -196,6 +196,11 @@ public final class AppDatabase: Sendable {
                 t.add(column: "styleCues", .text).notNull().defaults(to: "[]")
             }
         }
+        m.registerMigration("v7-custom-lyrics-batch") { db in
+            try db.alter(table: "album") { t in
+                t.add(column: "batchID", .text)
+            }
+        }
         return m
     }
 

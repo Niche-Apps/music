@@ -12,6 +12,7 @@ struct AlbumView: View {
         var tracks: [TrackInfo]
         var moreByArtist: [AlbumInfo]
         var similar: [AlbumInfo]
+        var batchTitle: String?
     }
 
     @State private var data: Data?
@@ -38,7 +39,15 @@ struct AlbumView: View {
             let more = try LibraryQuery.albums().filter(Column("artistID") == info.artist.id && Column("id") != albumID)
                 .order(Column("releaseYear").desc).fetchAll(db)
             let candidates = try LibraryQuery.albums().filter(Column("artistID") != info.artist.id).fetchAll(db)
-            return Data(info: info, tracks: tracks, moreByArtist: more, similar: Self.similar(to: info, among: candidates))
+            let batchTitle: String?
+            if let id = info.album.batchID {
+                batchTitle = try GenerationBatch.fetchOne(db, key: id)?.title
+            } else {
+                batchTitle = nil
+            }
+            return Data(
+                info: info, tracks: tracks, moreByArtist: more, similar: Self.similar(to: info, among: candidates),
+                batchTitle: batchTitle)
         } update: { value in
             data = value
             loaded = true
@@ -140,6 +149,13 @@ struct AlbumView: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .padding(.top, 6)
+                if let batchTitle = data.batchTitle {
+                    Text(batchTitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 4)
+                        .accessibilityLabel("Batch \(batchTitle)")
+                }
                 if !album.notes.isEmpty {
                     notes(album.notes)
                         .padding(.top, 14)
